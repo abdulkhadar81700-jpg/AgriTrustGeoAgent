@@ -1,0 +1,1997 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="AgriTrustGeoAgent - Evidence-based intelligence for every field. Combining crop images, validation, weather, soil, satellite data, geospatial mapping, AI analysis, and expert escalation.">
+  <title>AgriTrustGeoAgent | Evidence-Based Intelligence for Every Field</title>
+  
+  <!-- Design System Stylesheet -->
+  <link rel="stylesheet" href="css/styles.css">
+
+  <!-- Leaflet GIS Mapping Stylesheet -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+</head>
+<body>
+
+  <!-- =========================================================================
+       1. Navigation Bar
+       ========================================================================= -->
+  <header class="site-header" role="banner">
+    <div class="container nav-container">
+      <!-- Brand Identity -->
+      <a href="#hero" class="brand-logo" aria-label="AgriTrustGeoAgent Home">
+        <svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+          <rect width="40" height="40" rx="10" fill="#0B3821"/>
+          <!-- Agronomic Geospatial Polygon -->
+          <polygon points="20,8 32,15 32,29 20,34 8,29 8,15" stroke="#22C55E" stroke-width="2" fill="none"/>
+          <path d="M20 14 C20 14 13 20 13 25 C13 28.5 16 31 20 31 C24 31 27 28.5 27 25 C27 20 20 14 20 14 Z" fill="#22C55E"/>
+          <path d="M20 20 L20 28" stroke="#0B3821" stroke-width="1.5" stroke-linecap="round"/>
+          <path d="M20 24 L23 22" stroke="#0B3821" stroke-width="1.5" stroke-linecap="round"/>
+          <circle cx="20" cy="9" r="2" fill="#38BDF8"/>
+        </svg>
+        <span>AgriTrust<span style="color: #168a4d;">Geo</span>Agent</span>
+      </a>
+
+      <!-- Desktop Primary Navigation -->
+      <nav class="desktop-nav" aria-label="Primary Navigation">
+        <a href="#hero" class="nav-link active">Home</a>
+        <a href="#workflow" class="nav-link">How It Works</a>
+        <a href="#dashboard" class="nav-link">Dashboard</a>
+        <a href="#crop-camera" class="nav-link">Crop Camera</a>
+        <a href="#fields" class="nav-link">Field Manager</a>
+        <a href="#features" class="nav-link">Features</a>
+        <a href="#guide" class="nav-link">Farmer Guide</a>
+        <a href="#pricing" class="nav-link">Pricing</a>
+        <a href="#about" class="nav-link">About</a>
+        <a href="#contact" class="nav-link">Contact</a>
+      </nav>
+
+      <!-- Desktop Action Buttons -->
+      <div class="header-actions">
+        <!-- Guest State -->
+        <div id="headerGuestActions" style="display: flex; align-items: center; gap: 0.75rem;">
+          <a href="#login" class="btn btn-subtle js-open-login">Login</a>
+          <a href="#register" class="btn btn-primary js-open-register">Get Started</a>
+        </div>
+        <!-- Authenticated State -->
+        <div id="headerUserActions" style="display: none; align-items: center; gap: 0.75rem;">
+          <div class="user-profile-chip" id="btnHeaderProfile" title="Click to view farm profile">
+            <span class="user-avatar-dot">🌾</span>
+            <div class="user-chip-text">
+              <strong id="userChipName" class="user-chip-name">Farmer</strong>
+              <small id="userChipOrg" class="user-chip-org">Farm Operation</small>
+            </div>
+          </div>
+          <button type="button" id="btnHeaderSignOut" class="btn btn-subtle btn-sm" title="Sign out of producer portal">
+            Sign Out
+          </button>
+        </div>
+      </div>
+
+      <!-- Mobile Hamburger Button -->
+      <button id="mobileMenuBtn" class="mobile-menu-btn" aria-label="Open Navigation Menu" aria-expanded="false" aria-controls="mobileDrawer">
+        <span></span>
+        <span></span>
+        <span></span>
+      </button>
+    </div>
+  </header>
+
+  <!-- Mobile Drawer Backdrop & Menu -->
+  <div id="drawerBackdrop" class="drawer-backdrop" aria-hidden="true"></div>
+  <aside id="mobileDrawer" class="mobile-drawer" aria-label="Mobile Navigation">
+    <div class="mobile-drawer-header">
+      <div class="brand-logo" style="font-size: 1.1rem;">
+        <svg width="28" height="28" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <rect width="40" height="40" rx="8" fill="#0B3821"/>
+          <polygon points="20,8 32,15 32,29 20,34 8,29 8,15" stroke="#22C55E" stroke-width="2" fill="none"/>
+          <circle cx="20" cy="22" r="5" fill="#22C55E"/>
+        </svg>
+        <span>AgriTrust<span style="color: #168a4d;">Geo</span></span>
+      </div>
+      <button id="drawerCloseBtn" class="mobile-drawer-close" aria-label="Close navigation menu">&times;</button>
+    </div>
+
+    <nav class="mobile-nav-links">
+      <a href="#hero" class="mobile-nav-link">Home <span>&rarr;</span></a>
+      <a href="#workflow" class="mobile-nav-link">How It Works <span>&rarr;</span></a>
+      <a href="#dashboard" class="mobile-nav-link">Dashboard <span>&rarr;</span></a>
+      <a href="#crop-camera" class="mobile-nav-link">Crop Camera <span>&rarr;</span></a>
+      <a href="#fields" class="mobile-nav-link">Field Manager <span>&rarr;</span></a>
+      <a href="#features" class="mobile-nav-link">Features <span>&rarr;</span></a>
+      <a href="#guide" class="mobile-nav-link">Farmer Guide <span>&rarr;</span></a>
+      <a href="#pricing" class="mobile-nav-link">Pricing <span>&rarr;</span></a>
+      <a href="#about" class="mobile-nav-link">About <span>&rarr;</span></a>
+      <a href="#contact" class="mobile-nav-link">Contact <span>&rarr;</span></a>
+    </nav>
+
+    <div class="mobile-drawer-actions">
+      <!-- Mobile Guest Actions -->
+      <div id="mobileGuestActions" style="display: flex; flex-direction: column; gap: 0.5rem; width: 100%;">
+        <button class="btn btn-secondary js-open-login" style="width: 100%;">Producer Login</button>
+        <button class="btn btn-primary js-open-register" style="width: 100%;">Get Started / Register</button>
+      </div>
+      <!-- Mobile User Actions -->
+      <div id="mobileUserActions" style="display: none; flex-direction: column; gap: 0.5rem; width: 100%;">
+        <div style="font-size: 0.8125rem; color: var(--text-muted); text-align: center; padding: 0.25rem 0;">
+          Signed in as: <strong id="mobileUserEmail" style="color: var(--text-primary); word-break: break-all;"></strong>
+        </div>
+        <button type="button" id="btnMobileSignOut" class="btn btn-secondary btn-sm" style="width: 100%;">Sign Out</button>
+      </div>
+    </div>
+  </aside>
+
+  <main>
+    <!-- =========================================================================
+         2. Hero Section
+         ========================================================================= -->
+    <section id="hero" class="hero-section">
+      <div class="container hero-grid">
+        <div class="hero-content">
+          <div class="hero-badge">
+            <span class="indicator-dot"></span>
+            Empirical Agronomic Decision Architecture
+          </div>
+
+          <h1 class="hero-headline">
+            Evidence-based intelligence for every field.
+          </h1>
+
+          <p class="hero-lead">
+            Modern agronomy cannot rely on single-point guesses or unverified images. AgriTrustGeoAgent synthesizes ground-truth evidence with remote sensing and verified expert oversight to protect crops and optimize yields.
+          </p>
+
+          <!-- 8 Core Convergence Pillars -->
+          <div class="hero-multi-pillar">
+            <div class="hero-pillar-label">Unified Multi-Layer Field Telemetry</div>
+            <div class="hero-pillar-tags">
+              <span class="pillar-tag">
+                <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"/><circle cx="12" cy="13" r="4" stroke-width="2"/></svg>
+                Crop Images
+              </span>
+              <span class="pillar-tag">
+                <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
+                Evidence Validation
+              </span>
+              <span class="pillar-tag">
+                <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 00-9.78 2.096A4.001 4.001 0 003 15z"/></svg>
+                Weather
+              </span>
+              <span class="pillar-tag">
+                <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/></svg>
+                Soil
+              </span>
+              <span class="pillar-tag">
+                <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064"/></svg>
+                Satellite Information
+              </span>
+              <span class="pillar-tag">
+                <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"/></svg>
+                Geospatial Field Intelligence
+              </span>
+              <span class="pillar-tag">
+                <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
+                AI Analysis
+              </span>
+              <span class="pillar-tag">
+                <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/></svg>
+                Expert Escalation
+              </span>
+            </div>
+          </div>
+
+          <!-- CTAs -->
+          <div class="hero-ctas">
+            <a href="#register" class="btn btn-primary btn-lg js-open-register">Start Managing Your Farm</a>
+            <a href="#workflow" class="btn btn-secondary btn-lg">Explore 6-Step Workflow</a>
+          </div>
+
+          <div class="hero-guarantee">
+            <svg width="16" height="16" fill="currentColor" viewBox="0 0 20 20" style="color: #168a4d;"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/></svg>
+            <span>Strict agronomic safety: Every recommendation backed by confidence scores and human oversight.</span>
+          </div>
+        </div>
+
+        <!-- Hero Architecture Blueprint / Evidence Stack -->
+        <div class="hero-visual-card">
+          <div class="visual-card-header">
+            <div>
+              <div style="font-weight: 800; font-size: 1.05rem; color: #0f172a;">Field Evidence Architecture</div>
+              <div style="font-size: 0.75rem; color: #64748b;">Multi-Modal Data Ingestion Engine</div>
+            </div>
+            <span class="visual-status-badge">System Ready</span>
+          </div>
+
+          <div class="evidence-layers-stack">
+            <div class="layer-item">
+              <div class="layer-left">
+                <div class="layer-icon-box" style="background-color: #dcfce7; color: #166534;">
+                  <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"/><circle cx="12" cy="13" r="4" stroke-width="2"/></svg>
+                </div>
+                <div>
+                  <div class="layer-title">Ground-Truth Imagery</div>
+                  <div class="layer-subtitle">Leaf macro, focus audit, GPS & timestamp stamp</div>
+                </div>
+              </div>
+              <span class="layer-status-pill">Input Layer</span>
+            </div>
+
+            <div class="layer-item">
+              <div class="layer-left">
+                <div class="layer-icon-box" style="background-color: #e0f2fe; color: #075985;">
+                  <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"/></svg>
+                </div>
+                <div>
+                  <div class="layer-title">Geospatial & Satellite Index</div>
+                  <div class="layer-subtitle">Field polygon boundary, NDVI/NDRE canopy trends</div>
+                </div>
+              </div>
+              <span class="layer-status-pill">Spatial Context</span>
+            </div>
+
+            <div class="layer-item">
+              <div class="layer-left">
+                <div class="layer-icon-box" style="background-color: #fef3c7; color: #92400e;">
+                  <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/></svg>
+                </div>
+                <div>
+                  <div class="layer-title">Soil & Weather Dynamics</div>
+                  <div class="layer-subtitle">Moisture deficit, GDD, humidity, microclimate vectors</div>
+                </div>
+              </div>
+              <span class="layer-status-pill">Environmental</span>
+            </div>
+
+            <div class="layer-item">
+              <div class="layer-left">
+                <div class="layer-icon-box" style="background-color: #f1f5f9; color: #0f172a;">
+                  <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+                </div>
+                <div>
+                  <div class="layer-title">Farm Brain & Confidence Engine</div>
+                  <div class="layer-subtitle">Multi-modal synthesis with explicit uncertainty bounds</div>
+                </div>
+              </div>
+              <span class="layer-status-pill">Inference</span>
+            </div>
+
+            <div class="layer-item">
+              <div class="layer-left">
+                <div class="layer-icon-box" style="background-color: #fee2e2; color: #991b1b;">
+                  <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 5.636l-3.536 3.536m0 5.656l3.536 3.536M9.172 9.172L5.636 5.636m3.536 9.192l-3.536 3.536M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-5 0a4 4 0 11-8 0 4 4 0 018 0z"/></svg>
+                </div>
+                <div>
+                  <div class="layer-title">Expert Agronomy Escalation</div>
+                  <div class="layer-subtitle">Certified human specialist desk for edge & low-confidence cases</div>
+                </div>
+              </div>
+              <span class="layer-status-pill">Human-in-Loop</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- =========================================================================
+         3. Workflow Section (6-Step Evidence Pipeline)
+         ========================================================================= -->
+    <section id="workflow" class="section-padding workflow-section">
+      <div class="container">
+        <div class="section-header">
+          <div class="section-eyebrow">Scientific Rigor</div>
+          <h2 class="section-title">The 6-Step Evidence Workflow</h2>
+          <p class="section-description">
+            Unverified predictions create catastrophic risk for farm yields. Our closed-loop architecture mandates strict empirical checks before generating advice.
+          </p>
+        </div>
+
+        <div class="workflow-timeline">
+          <!-- Step 1: Evidence -->
+          <div class="workflow-step-card">
+            <div class="step-card-top">
+              <span class="step-number">01</span>
+              <span class="step-flow-icon">
+                <svg width="24" height="24" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"/></svg>
+              </span>
+            </div>
+            <h3 class="step-title">Evidence Capture</h3>
+            <p class="step-desc">
+              Field observations captured with coordinates, time markers, optical sharpness checks, and leaf-angle alignment right from the grower's camera.
+            </p>
+            <span class="step-meta-badge">Input Stage</span>
+          </div>
+
+          <!-- Step 2: Validation -->
+          <div class="workflow-step-card">
+            <div class="step-card-top">
+              <span class="step-number">02</span>
+              <span class="step-flow-icon">
+                <svg width="24" height="24" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+              </span>
+            </div>
+            <h3 class="step-title">Evidence Validation</h3>
+            <p class="step-desc">
+              Quality screening verifies lighting conditions, blur indices, GPS containment within registered field boundaries, and eliminates spoofed or degraded inputs.
+            </p>
+            <span class="step-meta-badge">Integrity Gate</span>
+          </div>
+
+          <!-- Step 3: AI Analysis -->
+          <div class="workflow-step-card">
+            <div class="step-card-top">
+              <span class="step-number">03</span>
+              <span class="step-flow-icon">
+                <svg width="24" height="24" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"/></svg>
+              </span>
+            </div>
+            <h3 class="step-title">AI Multi-Modal Analysis</h3>
+            <p class="step-desc">
+              Deep agronomic models evaluate symptomatology, cross-referenced with weather telemetry, soil moisture profiles, and temporal satellite vigor indices.
+            </p>
+            <span class="step-meta-badge">Neural Synthesis</span>
+          </div>
+
+          <!-- Step 4: Confidence -->
+          <div class="workflow-step-card">
+            <div class="step-card-top">
+              <span class="step-number">04</span>
+              <span class="step-flow-icon">
+                <svg width="24" height="24" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 3.055A9.001 9.001 0 1020.945 13H11V3.055z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.488 9H15V3.512A9.025 9.025 0 0120.488 9z"/></svg>
+              </span>
+            </div>
+            <h3 class="step-title">Confidence Calibration</h3>
+            <p class="step-desc">
+              Rather than assuming false certainty, the engine computes probabilistic confidence intervals. Biological systems vary; we quantify uncertainty transparently.
+            </p>
+            <span class="step-meta-badge">Safety Threshold</span>
+          </div>
+
+          <!-- Step 5: Recommendation -->
+          <div class="workflow-step-card">
+            <div class="step-card-top">
+              <span class="step-number">05</span>
+              <span class="step-flow-icon">
+                <svg width="24" height="24" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"/></svg>
+              </span>
+            </div>
+            <h3 class="step-title">Actionable Recommendation</h3>
+            <p class="step-desc">
+              When confidence exceeds safety gates, localized treatment protocols, irrigation adjustments, or nutrient balancing plans are delivered directly to the grower.
+            </p>
+            <span class="step-meta-badge">Targeted Action</span>
+          </div>
+
+          <!-- Step 6: Escalation -->
+          <div class="workflow-step-card" style="border-color: #fecdd3; background-color: #fff1f2;">
+            <div class="step-card-top">
+              <span class="step-number" style="background-color: #fee2e2; color: #991b1b;">06</span>
+              <span class="step-flow-icon" style="color: #be123c;">
+                <svg width="24" height="24" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+              </span>
+            </div>
+            <h3 class="step-title" style="color: #881337;">Expert Escalation</h3>
+            <p class="step-desc" style="color: #4c0519;">
+              If symptoms are novel, environmental vectors conflict, or confidence falls below safe operational limits, the case is routed to certified agronomists.
+            </p>
+            <span class="step-meta-badge" style="border-color: #fecdd3; color: #9f1239;">Failsafe Protocol</span>
+          </div>
+        </div>
+
+        <div class="workflow-callout-box">
+          <div class="callout-content">
+            <h4>No Blind Automation. No False Certainty.</h4>
+            <p>
+              AgriTrustGeoAgent explicitly rejects 100% disease detection claims. Biological crop pathology is influenced by dozens of soil, humidity, and microclimate factors. Human-in-the-loop escalation is our foundational safety guarantee.
+            </p>
+          </div>
+          <a href="#contact" class="btn btn-primary" style="white-space: nowrap;">Connect With Agronomists</a>
+        </div>
+      </div>
+    </section>
+
+    <!-- =========================================================================
+         Step 3: Farmer Operations Dashboard & Production Field Management Section
+         ========================================================================= -->
+    <section id="dashboard" class="section-padding farmer-dashboard-section">
+      <div class="container">
+        <!-- Unauthenticated Access Gate -->
+        <div id="dashboardAccessGate" class="dashboard-gate-card">
+          <div class="dashboard-gate-icon">🔒</div>
+          <h3 class="dashboard-gate-title">Producer Operations Portal</h3>
+          <p class="dashboard-gate-desc">
+            Sign in with your verified grower credentials to access your protected farm parcels, soil profiles, PostGIS spatial boundaries, and satellite telemetry.
+          </p>
+          <button type="button" class="btn btn-primary btn-lg js-open-login">
+            <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1"/></svg>
+            Sign In to Farm Dashboard
+          </button>
+        </div>
+
+        <!-- Authenticated Dashboard Workspace -->
+        <div id="dashboardContent" style="display: none;">
+          <!-- Dashboard Top Header Bar -->
+          <div class="dashboard-header-bar">
+            <div>
+              <div class="dashboard-welcome-tag">
+                <span class="live-indicator-dot"></span> Verified Farm Session
+              </div>
+              <h2 class="dashboard-title">
+                Welcome back, <span id="farmerWelcomeName">Grower</span>
+              </h2>
+              <p class="dashboard-subtitle">
+                Operation: <span id="farmerOrgBadge" class="org-badge">Independent Farm</span>
+              </p>
+            </div>
+            <div class="dashboard-top-actions">
+              <button type="button" id="btnRefreshDashboard" class="btn btn-secondary btn-sm" title="Reload fields from Supabase">
+                <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+                Sync Data
+              </button>
+              <button type="button" id="btnOpenProfile" class="btn btn-secondary btn-sm" title="Edit farm operator profile">
+                <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>
+                Farm Profile
+              </button>
+              <button type="button" id="btnGoToCamera" class="btn btn-secondary btn-sm" title="Open Smart Crop Camera">
+                <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"/><circle cx="12" cy="13" r="4" stroke-width="2"/></svg>
+                Crop Camera
+              </button>
+              <button type="button" id="btnGoToMapAdd" class="btn btn-primary btn-sm" title="Draw a new field parcel on satellite map">
+                <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
+                + New Parcel
+              </button>
+            </div>
+          </div>
+
+          <!-- Feedback Notification Banner -->
+          <div id="dashboardFeedback" class="dashboard-feedback-banner" style="display: none;"></div>
+
+          <!-- KPI Summary Metrics Grid -->
+          <div class="kpi-grid">
+            <div class="kpi-card">
+              <div class="kpi-icon-wrap kpi-icon-green">
+                <svg width="24" height="24" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"/></svg>
+              </div>
+              <div class="kpi-info">
+                <span class="kpi-label">Registered Field Parcels</span>
+                <div class="kpi-value" id="kpiTotalFields">0</div>
+              </div>
+            </div>
+
+            <div class="kpi-card">
+              <div class="kpi-icon-wrap kpi-icon-blue">
+                <svg width="24" height="24" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064"/></svg>
+              </div>
+              <div class="kpi-info">
+                <span class="kpi-label">Total Cultivated Area</span>
+                <div class="kpi-value">
+                  <span id="kpiTotalAcres">0.00</span> <span class="kpi-unit">ac</span>
+                  <span class="kpi-subvalue">(<span id="kpiTotalHa">0.00</span> ha)</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="kpi-card">
+              <div class="kpi-icon-wrap kpi-icon-amber">
+                <svg width="24" height="24" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/></svg>
+              </div>
+              <div class="kpi-info">
+                <span class="kpi-label">Active Crop Types</span>
+                <div class="kpi-value" id="kpiCropCount">0</div>
+              </div>
+            </div>
+
+            <div class="kpi-card">
+              <div class="kpi-icon-wrap kpi-icon-purple">
+                <svg width="24" height="24" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+              </div>
+              <div class="kpi-info">
+                <span class="kpi-label">Most Recent Parcel</span>
+                <div class="kpi-value-sm" id="kpiRecentField">None registered</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Fields Table Section -->
+          <div class="dashboard-table-container">
+            <div class="table-container-header">
+              <div>
+                <h3 class="table-heading">Farm Parcel Inventory</h3>
+                <p class="table-subheading">All parcels registered under your account with validated PostGIS boundaries.</p>
+              </div>
+            </div>
+
+            <!-- Empty Notice -->
+            <div id="emptyFieldsNotice" class="empty-fields-state" style="display: none;">
+              <div class="empty-icon">🌾</div>
+              <h4>No field parcels registered yet</h4>
+              <p>Draw your first parcel boundary on the interactive satellite mapper to start tracking crop health.</p>
+              <a href="#fields" class="btn btn-primary btn-sm">Draw First Field Boundary</a>
+            </div>
+
+            <!-- Desktop Fields Table -->
+            <div class="fields-table-wrapper">
+              <table class="fields-table">
+                <thead>
+                  <tr>
+                    <th>Parcel Identity</th>
+                    <th>Crop Variety</th>
+                    <th>Acreage</th>
+                    <th>Soil Texture</th>
+                    <th>Planting Date</th>
+                    <th>Spatial Boundary</th>
+                    <th style="text-align: right;">Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="fieldsTableBody">
+                  <!-- Injected via AgriTrustFarmerDashboard.js -->
+                </tbody>
+              </table>
+            </div>
+
+            <!-- Mobile Fields Cards Container -->
+            <div id="fieldsCardsMobile" class="fields-cards-mobile">
+              <!-- Injected via AgriTrustFarmerDashboard.js -->
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- =========================================================================
+         NEW: Field Parcel Boundary Manager & Interactive GIS Section
+         ========================================================================= -->
+    <section id="fields" class="section-padding field-manager-section">
+      <div class="container">
+        <div class="section-header">
+          <div class="section-eyebrow">Interactive Farm GIS</div>
+          <h2 class="section-title">Field Parcel Boundary Mapper</h2>
+          <p class="section-description">
+            Draw and inspect your farm parcels over real-time satellite imagery. Boundaries are geometrically validated and stored as PostGIS polygons to enforce strict spatial geofencing for crop health imagery.
+          </p>
+        </div>
+
+        <div class="field-manager-grid">
+          <!-- Control Panel -->
+          <div class="field-panel-card">
+            <div class="field-panel-header">
+              <h3 class="field-panel-title">
+                <svg width="22" height="22" fill="none" stroke="#168a4d" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"/></svg>
+                Parcel Controls
+              </h3>
+              <p class="field-panel-desc">Outline field perimeter corners or edit existing parcels.</p>
+            </div>
+
+            <!-- Auth Status Banner -->
+            <div id="fieldAuthGateNotice" class="field-auth-notice" style="display: none;"></div>
+
+            <!-- Telemetry HUD -->
+            <div class="telemetry-hud-grid">
+              <div class="hud-item">
+                <span class="hud-label">Calculated Area</span>
+                <div class="hud-value"><span id="hudAreaAcres">0.00</span> <span class="hud-value-sm">ac</span></div>
+              </div>
+              <div class="hud-item">
+                <span class="hud-label">Metric Area</span>
+                <div class="hud-value"><span id="hudAreaHa">0.00</span> <span class="hud-value-sm">ha</span></div>
+              </div>
+              <div class="hud-item">
+                <span class="hud-label">Boundary Points</span>
+                <div class="hud-value" id="hudPointCount">0</div>
+              </div>
+              <div class="hud-item">
+                <span class="hud-label">Geometric State</span>
+                <span id="hudValidityBadge" class="telemetry-badge pending">Incomplete</span>
+              </div>
+            </div>
+
+            <!-- Action Toolbar -->
+            <div class="drawing-actions-toolbar">
+              <button type="button" id="btnStartDraw" class="btn btn-primary">
+                <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
+                Start Drawing Parcel
+              </button>
+              <button type="button" id="btnUndoPoint" class="btn btn-secondary" title="Remove the most recently added point">
+                <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M3 10h10a5 5 0 015 5v2M3 10l6 6m-6-6l6-6"/></svg>
+                Undo Point
+              </button>
+              <button type="button" id="btnClearPoly" class="btn btn-subtle" title="Reset current polygon drawing">
+                <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                Clear
+              </button>
+            </div>
+
+            <!-- Field Registration Form -->
+            <form id="fieldRegistrationForm">
+              <div class="field-form-group">
+                <label for="fieldName" class="field-form-label">Parcel Name / Identifier *</label>
+                <input type="text" id="fieldName" class="field-form-input" placeholder="e.g., North 40 Corn, East Orchard Lot 3" required>
+              </div>
+
+              <div class="field-form-row">
+                <div class="field-form-group">
+                  <label for="cropVariety" class="field-form-label">Primary Crop Variety *</label>
+                  <input type="text" id="cropVariety" class="field-form-input" placeholder="e.g., Maize (Zea mays)" required>
+                </div>
+                <div class="field-form-group">
+                  <label for="plantingDate" class="field-form-label">Planting Date</label>
+                  <input type="date" id="plantingDate" class="field-form-input">
+                </div>
+              </div>
+
+              <div class="field-form-row">
+                <div class="field-form-group">
+                  <label for="soilTexture" class="field-form-label">Soil Texture Classification</label>
+                  <select id="soilTexture" class="field-form-select">
+                    <option value="">Select Soil Profile (Optional)</option>
+                    <option value="Silt Loam">Silt Loam (High moisture retention)</option>
+                    <option value="Clay Loam">Clay Loam (Moderate infiltration)</option>
+                    <option value="Sandy Loam">Sandy Loam (Rapid drainage)</option>
+                    <option value="Clay">Clay (Heavy, slow permeability)</option>
+                    <option value="Sand">Sand (Coarse, high leaching)</option>
+                    <option value="Loam">Standard Loam (Balanced)</option>
+                    <option value="Peat">Peat / Organic High</option>
+                  </select>
+                </div>
+                <div class="field-form-group">
+                  <label for="fieldAcreage" class="field-form-label">Acreage (Auto-computed)</label>
+                  <input type="number" step="0.01" id="fieldAcreage" class="field-form-input" placeholder="0.00" readonly style="background-color: var(--bg-body); font-weight: 700; color: #168a4d;">
+                </div>
+              </div>
+
+              <div id="fieldValidationNotice" class="field-validation-notice" style="display: none;"></div>
+
+              <button type="submit" id="btnSaveField" class="btn btn-primary" style="width: 100%;" disabled>
+                <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"/></svg>
+                Save Parcel Boundary
+              </button>
+            </form>
+
+            <!-- Registered Fields Accordion -->
+            <div class="registered-fields-container">
+              <div class="registered-fields-title">
+                <span>My Registered Parcels</span>
+                <span style="font-size: 0.75rem; color: var(--text-muted);">Cloud Synced</span>
+              </div>
+              <div id="registeredFieldsList" class="registered-fields-list">
+                <p style="color: var(--text-muted); font-size: 0.85rem;">Loading registered parcels...</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Interactive Satellite Map Container -->
+          <div class="field-map-wrapper" id="fieldMapWrapper">
+            <!-- Floating Map Toolbar -->
+            <div class="field-map-floating-toolbar">
+              <button type="button" id="btnLocateGps" class="map-floating-btn" title="Center map on your device location (Requires permission)">
+                <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3" stroke-width="2"/><circle cx="12" cy="12" r="8" stroke-width="2"/></svg>
+                Locate My Field (GPS)
+              </button>
+              <button type="button" id="btnToggleBasemap" class="map-floating-btn" title="Toggle between Satellite Imagery and Street/Road view">
+                <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"/></svg>
+                Switch to Street
+              </button>
+              <button type="button" id="btnToggleFullscreen" class="map-floating-btn" title="Toggle full-screen map mode for precision boundary drawing">
+                <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5v-4m0 4h-4m4 0l-5-5"/></svg>
+                Fullscreen
+              </button>
+            </div>
+
+            <!-- Detailed Current Location Information Card -->
+            <div id="fieldLocationCard" class="field-location-card" style="display: none;">
+              <div class="location-card-header">
+                <div class="location-card-title">
+                  <span class="location-pulse-dot"></span>
+                  <strong>Current Location</strong>
+                </div>
+                <div class="location-header-actions">
+                  <span id="locTrackingStatus" class="tracking-live-pill" style="display: none;">
+                    <span class="live-dot"></span> LIVE
+                  </span>
+                  <button type="button" id="btnCloseLocationCard" class="location-close-btn" title="Dismiss location card">&times;</button>
+                </div>
+              </div>
+              <div class="location-card-body">
+                <!-- Location Address Hierarchy -->
+                <div class="location-primary-name" id="locPrimaryPlace">Acquiring locality...</div>
+                <div class="location-sub-name" id="locSubPlace">Mandal / Sub-district</div>
+                <div class="location-district-name" id="locDistrict">District</div>
+                <div class="location-region" id="locRegion">State, Country</div>
+
+                <!-- Accuracy & Source Meta Grid -->
+                <div class="location-meta-grid">
+                  <div class="location-meta-item">
+                    <span class="meta-label">Coordinates</span>
+                    <span class="meta-val" id="locCoords">--</span>
+                  </div>
+                  <div class="location-meta-item">
+                    <span class="meta-label">Location Accuracy</span>
+                    <div class="accuracy-row">
+                      <span class="meta-val accuracy-badge" id="locAccuracy">--</span>
+                      <span class="accuracy-tier-pill" id="locAccuracyTier">--</span>
+                    </div>
+                  </div>
+                  <div class="location-meta-item location-meta-full">
+                    <span class="meta-label">Location Source</span>
+                    <span class="meta-val source-val" id="locSource">Device location</span>
+                  </div>
+                </div>
+
+                <!-- Extended GNSS Telemetry (Altitude, Heading, Speed) -->
+                <div id="locGnssTelemetry" class="gnss-telemetry-row" style="display: none;">
+                  <span class="gnss-item" id="locAltitude"><small>ALT:</small> --</span>
+                  <span class="gnss-item" id="locSpeed"><small>SPD:</small> --</span>
+                  <span class="gnss-item" id="locHeading"><small>HDG:</small> --</span>
+                </div>
+
+                <!-- Low Accuracy Advisory Warning -->
+                <div id="locAccuracyWarning" class="location-accuracy-warning" style="display: none;">
+                  <div class="warning-title">⚠️ Location accuracy is currently low.</div>
+                  <div class="warning-desc" id="locAccuracyWarningText">
+                    Try moving outdoors or improving the device's location signal.
+                  </div>
+                </div>
+
+                <!-- Improve Location Accuracy Action Button -->
+                <div class="location-card-actions">
+                  <button type="button" id="btnImproveAccuracy" class="btn-improve-accuracy" title="Sample multiple high-accuracy GPS readings to refine position">
+                    <svg class="improve-icon" width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+                    <span id="improveBtnText">Improve Location Accuracy</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Leaflet Target Map -->
+            <div id="fieldMap"></div>
+
+            <!-- Universal Place Search & Coordinate Jump Bar -->
+            <div class="field-map-coord-bar">
+              <div class="coord-search-icon">
+                <svg width="16" height="16" fill="none" stroke="#94a3b8" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+              </div>
+              <input type="text" id="manualCoordInput" class="coord-jump-input" placeholder="Search village, mandal, district or enter Lat, Lng (e.g. Guntur or 16.3067, 80.4365)">
+              <button type="button" id="btnManualJump" class="coord-jump-btn" title="Search place or jump to coordinates">
+                <span id="coordJumpBtnText">Search / Go</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- =========================================================================
+         Step 4: Smart Crop Camera & Evidence Validation Workflow Section
+         ========================================================================= -->
+    <section id="crop-camera" class="section-padding smart-camera-section">
+      <div class="container">
+        <div class="section-header">
+          <div class="section-eyebrow">Evidence-Based Optical Gateway</div>
+          <h2 class="section-title">Smart Crop Camera & Spatial Screening</h2>
+          <p class="section-description">
+            Capture or upload leaf and canopy photos with real-time optical quality analysis, EXIF GPS coordinate extraction, and PostGIS boundary geofencing.
+          </p>
+        </div>
+
+        <!-- Unauthenticated Camera Gate -->
+        <div id="cameraAuthGate" class="dashboard-gate-card">
+          <div class="dashboard-gate-icon">📷</div>
+          <h3 class="dashboard-gate-title">Producer Camera Access Gate</h3>
+          <p class="dashboard-gate-desc">
+            Sign in with your verified grower credentials to select your parcels, capture field evidence, and log tamper-evident spatial records.
+          </p>
+          <button type="button" class="btn btn-primary btn-lg js-open-login">
+            <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1"/></svg>
+            Sign In to Access Smart Camera
+          </button>
+        </div>
+
+        <!-- Authenticated Camera Workbench -->
+        <div id="cameraWorkbench" style="display: none;">
+          <div class="camera-workbench-grid">
+            <!-- Left Column: Optical Viewfinder & Dropzone -->
+            <div class="camera-viewfinder-card">
+              <!-- Dual Hidden File Inputs -->
+              <input type="file" id="cropCameraInput" accept="image/jpeg,image/png,image/webp" capture="environment" style="display: none;">
+              <input type="file" id="cropFileInput" accept="image/jpeg,image/png,image/webp" style="display: none;">
+
+              <!-- Interactive Dropzone -->
+              <div id="cameraDropzone" class="camera-dropzone">
+                <div class="dropzone-icon-circle">
+                  <svg width="32" height="32" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"/><circle cx="12" cy="13" r="4" stroke-width="2"/></svg>
+                </div>
+                <h4 class="dropzone-title">Capture or Upload Crop Photo</h4>
+                <p class="dropzone-subtitle">
+                  Direct mobile rear camera capture or drag & drop high-resolution canopy photos (JPEG, PNG, WebP up to 20MB).
+                </p>
+                <div class="camera-dual-buttons">
+                  <button type="button" id="btnTriggerCamera" class="btn-camera-action primary">
+                    <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"/><circle cx="12" cy="13" r="4" stroke-width="2"/></svg>
+                    Take Photo (Camera)
+                  </button>
+                  <button type="button" id="btnTriggerFile" class="btn-camera-action secondary">
+                    <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+                    Choose Image / Storage
+                  </button>
+                </div>
+              </div>
+
+              <!-- Live Photo Preview Card (Shown after selection) -->
+              <div id="cameraPreviewContainer" class="camera-preview-card" style="display: none;">
+                <div class="preview-overlay-bar">
+                  <span class="preview-format-tag">Active Optical Buffer</span>
+                  <button type="button" id="btnResetCapture" class="btn-preview-reset">Retake / Change</button>
+                </div>
+                <img id="cameraPreviewImage" class="camera-preview-img" alt="Captured crop evidence preview">
+              </div>
+
+              <!-- Dynamic Evidence Status Banner -->
+              <div id="cameraStatusBanner" class="camera-status-banner" style="display: none;">
+                <div class="camera-status-header">
+                  <span id="cameraStatusBadge" class="camera-status-badge">VALIDATION</span>
+                  <h5 id="cameraStatusTitle" class="camera-status-title">Screening Image</h5>
+                </div>
+                <p id="cameraStatusDescription" class="camera-status-desc"></p>
+              </div>
+            </div>
+
+            <!-- Right Column: Field Selection & Agronomic Form -->
+            <div class="camera-form-panel">
+              <div>
+                <h3 class="camera-panel-title">
+                  <svg width="22" height="22" fill="none" stroke="#168a4d" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                  Field & Evidence Anchor
+                </h3>
+                <p class="camera-panel-desc">Every piece of evidence must be explicitly anchored to a registered parcel.</p>
+              </div>
+
+              <!-- Field Selection (Mandatory) -->
+              <div class="field-form-group">
+                <label for="cameraFieldSelect" class="field-form-label">Select Registered Field Parcel *</label>
+                <select id="cameraFieldSelect" class="field-form-select" required>
+                  <option value="">Loading registered parcels...</option>
+                </select>
+                <div id="cameraFieldSummary" style="margin-top: 0.25rem;"></div>
+              </div>
+
+              <!-- Agronomic Metadata Inputs -->
+              <div class="field-form-row">
+                <div class="field-form-group">
+                  <label for="cameraCropName" class="field-form-label">Observed Crop Name</label>
+                  <input type="text" id="cameraCropName" class="field-form-input" placeholder="e.g. Maize, Soybean, Tomato">
+                </div>
+                <div class="field-form-group">
+                  <label for="cameraGrowthStage" class="field-form-label">Growth Stage</label>
+                  <select id="cameraGrowthStage" class="field-form-select">
+                    <option value="Emergence / Vegetative">Emergence / Vegetative (V1-V6)</option>
+                    <option value="Flowering / Tasseling">Flowering / Tasseling (R1)</option>
+                    <option value="Grain Fill / Pod Development">Grain Fill / Pod Development</option>
+                    <option value="Maturity / Pre-Harvest">Maturity / Pre-Harvest</option>
+                    <option value="Post-Harvest / Stubble">Post-Harvest / Stubble</option>
+                    <option value="Other / Unknown">Other / Unknown</option>
+                  </select>
+                </div>
+              </div>
+
+              <div class="field-form-group">
+                <label for="cameraNotes" class="field-form-label">Field Observations / Symptoms (Optional)</label>
+                <input type="text" id="cameraNotes" class="field-form-input" placeholder="e.g. Marginal leaf chlorosis on lower leaves after rain">
+              </div>
+
+              <!-- Optical & Spatial Telemetry HUD -->
+              <div class="hud-telemetry-box">
+                <h5 class="hud-telemetry-title">Optical & Spatial Screening HUD</h5>
+                <div class="hud-telemetry-grid">
+                  <div class="hud-telemetry-item">
+                    <span class="hud-telemetry-label">Resolution</span>
+                    <span id="hudResolution" class="hud-telemetry-val">—</span>
+                  </div>
+                  <div class="hud-telemetry-item">
+                    <span class="hud-telemetry-label">File Size</span>
+                    <span id="hudFileSize" class="hud-telemetry-val">—</span>
+                  </div>
+                  <div class="hud-telemetry-item">
+                    <span class="hud-telemetry-label">Sharpness (σ²)</span>
+                    <span id="hudSharpness" class="hud-telemetry-val">—</span>
+                  </div>
+                  <div class="hud-telemetry-item">
+                    <span class="hud-telemetry-label">Exposure / Lux</span>
+                    <span id="hudExposure" class="hud-telemetry-val">—</span>
+                  </div>
+                  <div class="hud-telemetry-item">
+                    <span class="hud-telemetry-label">EXIF GPS Coordinates</span>
+                    <span id="hudCoordinates" class="hud-telemetry-val">—</span>
+                  </div>
+                  <div class="hud-telemetry-item">
+                    <span class="hud-telemetry-label">Geofence Status</span>
+                    <span id="hudGeofence" class="hud-telemetry-val">—</span>
+                  </div>
+                </div>
+                <button type="button" id="btnUseDeviceLocation" class="btn-device-gps" style="display: none;">
+                  📍 Anchor with Device GPS
+                </button>
+              </div>
+
+              <!-- Submit Evidence Button -->
+              <div>
+                <button type="button" id="btnSubmitEvidence" class="btn btn-primary btn-lg" style="width: 100%;" disabled>
+                  <span id="cameraSubmitSpinner" style="display: none;">⏳ </span>
+                  Submit & Archive Crop Evidence
+                </button>
+                <div id="cameraEvidenceFeedback" style="display: none; font-size: 0.8125rem; padding: 0.75rem; border-radius: 6px; margin-top: 0.75rem; border: 1px solid transparent;"></div>
+              </div>
+
+              <!-- Safety Guarantee Notice -->
+              <div class="safety-guarantee-notice">
+                <strong>Agronomic Safety Guarantee:</strong> AgriTrustGeoAgent captures, screens, and archives raw optical evidence. In accordance with biological accuracy principles, automated diagnosis or chemical recommendations are <em>never</em> rendered from a single unverified photo.
+              </div>
+            </div>
+          </div>
+
+          <!-- Recent Evidence Gallery for Authenticated Grower -->
+          <div class="recent-evidence-section">
+            <div class="recent-evidence-header">
+              <div>
+                <h3 class="table-heading">Recent Crop Evidence Log</h3>
+                <p class="table-subheading">Validated photo captures archived with tamper-evident spatial anchors.</p>
+              </div>
+            </div>
+
+            <div id="emptyEvidenceNotice" class="empty-fields-state" style="display: none; padding: 2rem 1rem;">
+              <div class="empty-icon">📷</div>
+              <h4>No crop evidence archived yet</h4>
+              <p>Select a field parcel above and take or upload your first canopy photo.</p>
+            </div>
+
+            <div id="recentEvidenceList" class="recent-evidence-grid">
+              <!-- Dynamically populated via AgriTrustCropCamera -->
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- =========================================================================
+         4. Core Capabilities (9 Required Sections)
+         ========================================================================= -->
+    <section id="features" class="section-padding features-section">
+      <div class="container">
+        <div class="section-header">
+          <div class="section-eyebrow">Enterprise Capabilities</div>
+          <h2 class="section-title">Engineered For Agricultural Precision</h2>
+          <p class="section-description">
+            Every feature is architected for real-world farm conditions, harsh field environments, and enterprise agronomic standards.
+          </p>
+        </div>
+
+        <div class="features-grid">
+          <!-- 1. Smart Crop Camera -->
+          <article class="feature-card">
+            <div class="feature-icon-wrapper feature-icon-green">
+              <svg width="24" height="24" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"/><circle cx="12" cy="13" r="4" stroke-width="2"/></svg>
+            </div>
+            <h3 class="feature-title">Smart Crop Camera</h3>
+            <p class="feature-text">
+              Specialized field capture with live leaf focus detection, lighting compensation, angle guidance, and automatic GPS & time coordinate embedding at the point of capture.
+            </p>
+            <ul class="feature-bullet-list">
+              <li>
+                <svg fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+                Macro focus audit prevents blurry submissions
+              </li>
+              <li>
+                <svg fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+                Cryptographic timestamp and geotag locking
+              </li>
+            </ul>
+          </article>
+
+          <!-- 2. Evidence Validation -->
+          <article class="feature-card">
+            <div class="feature-icon-wrapper feature-icon-green">
+              <svg width="24" height="24" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
+            </div>
+            <h3 class="feature-title">Evidence Validation</h3>
+            <p class="feature-text">
+              Automated data hygiene engine checking resolution, sensor noise, duplicate uploads, and geographic containment inside registered farm polygon boundaries.
+            </p>
+            <ul class="feature-bullet-list">
+              <li>
+                <svg fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+                Rejects non-plant and synthetic artifacts
+              </li>
+              <li>
+                <svg fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+                Validates parcel boundary containment
+              </li>
+            </ul>
+          </article>
+
+          <!-- 3. Farm Brain -->
+          <article class="feature-card">
+            <div class="feature-icon-wrapper feature-icon-green">
+              <svg width="24" height="24" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+            </div>
+            <h3 class="feature-title">Farm Brain</h3>
+            <p class="feature-text">
+              Context-aware agronomic reasoning engine connecting current field observations with historical seasonal records, crop phenology stages, and regional growth cycles.
+            </p>
+            <ul class="feature-bullet-list">
+              <li>
+                <svg fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+                Crop-specific phenological progression
+              </li>
+              <li>
+                <svg fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+                Contextual risk weighting based on season
+              </li>
+            </ul>
+          </article>
+
+          <!-- 4. Geo Field Risk Map -->
+          <article class="feature-card">
+            <div class="feature-icon-wrapper feature-icon-blue">
+              <svg width="24" height="24" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"/></svg>
+            </div>
+            <h3 class="feature-title">Geo Field Risk Map</h3>
+            <p class="feature-text">
+              High-resolution geospatial delineation of field polygons, identifying localized microclimate risk clusters, drainage depressions, and pathogen spread corridors.
+            </p>
+            <ul class="feature-bullet-list">
+              <li>
+                <svg fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+                Multi-parcel GIS boundary management
+              </li>
+              <li>
+                <svg fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+                Spatial threat clustering & contour analysis
+              </li>
+            </ul>
+          </article>
+
+          <!-- 5. Weather Intelligence -->
+          <article class="feature-card">
+            <div class="feature-icon-wrapper feature-icon-blue">
+              <svg width="24" height="24" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 00-9.78 2.096A4.001 4.001 0 003 15z"/></svg>
+            </div>
+            <h3 class="feature-title">Weather Intelligence</h3>
+            <p class="feature-text">
+              Hyperlocal meteorological feeds modeling growing degree days (GDD), dew point condensation duration, relative humidity spikes, and fungal spore dispersion windows.
+            </p>
+            <ul class="feature-bullet-list">
+              <li>
+                <svg fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+                Leaf wetness hour tracking
+              </li>
+              <li>
+                <svg fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+                Microclimate frost and heat stress alerts
+              </li>
+            </ul>
+          </article>
+
+          <!-- 6. Smart Irrigation -->
+          <article class="feature-card">
+            <div class="feature-icon-wrapper feature-icon-blue">
+              <svg width="24" height="24" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"/></svg>
+            </div>
+            <h3 class="feature-title">Smart Irrigation</h3>
+            <p class="feature-text">
+              Precision evapotranspiration (ET₀) estimation paired with soil moisture deficits to recommend exact volumetric water replenishment without wasting groundwater.
+            </p>
+            <ul class="feature-bullet-list">
+              <li>
+                <svg fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+                Crop water stress index calculations
+              </li>
+              <li>
+                <svg fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+                Root zone moisture depletion warnings
+              </li>
+            </ul>
+          </article>
+
+          <!-- 7. Soil Intelligence -->
+          <article class="feature-card">
+            <div class="feature-icon-wrapper feature-icon-earth">
+              <svg width="24" height="24" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/></svg>
+            </div>
+            <h3 class="feature-title">Soil Intelligence</h3>
+            <p class="feature-text">
+              Integration of soil physical taxonomy (clay, loam, sand), cation-exchange capacity indicators, and depth-stratified moisture absorption behavior per parcel.
+            </p>
+            <ul class="feature-bullet-list">
+              <li>
+                <svg fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+                Soil texture retention curves
+              </li>
+              <li>
+                <svg fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+                Historical nutrient depletion context
+              </li>
+            </ul>
+          </article>
+
+          <!-- 8. Satellite Intelligence -->
+          <article class="feature-card">
+            <div class="feature-icon-wrapper feature-icon-blue">
+              <svg width="24" height="24" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064"/></svg>
+            </div>
+            <h3 class="feature-title">Satellite Intelligence</h3>
+            <p class="feature-text">
+              Multi-spectral satellite imagery processing across NDVI, NDRE, and EVI bands to monitor canopy photosynthetic vitality and flag localized acreage anomalies.
+            </p>
+            <ul class="feature-bullet-list">
+              <li>
+                <svg fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+                Canopy vigor time-series tracking
+              </li>
+              <li>
+                <svg fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+                Broad-acre vegetative anomaly alarms
+              </li>
+            </ul>
+          </article>
+
+          <!-- 9. Expert Escalation -->
+          <article class="feature-card">
+            <div class="feature-icon-wrapper feature-icon-amber">
+              <svg width="24" height="24" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 5.636l-3.536 3.536m0 5.656l3.536 3.536M9.172 9.172L5.636 5.636m3.536 9.192l-3.536 3.536M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-5 0a4 4 0 11-8 0 4 4 0 018 0z"/></svg>
+            </div>
+            <h3 class="feature-title">Expert Escalation</h3>
+            <p class="feature-text">
+              Direct routing bridge connecting field observations to accredited agronomists whenever diagnostic uncertainty or high-impact pathogen risks occur.
+            </p>
+            <ul class="feature-bullet-list">
+              <li>
+                <svg fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+                Qualified agronomist triage desk
+              </li>
+              <li>
+                <svg fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+                Audited recommendations with liability safety
+              </li>
+            </ul>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <!-- =========================================================================
+         5. Farmer Practical Guide Section
+         ========================================================================= -->
+    <section id="guide" class="section-padding guide-section">
+      <div class="container">
+        <div class="section-header">
+          <div class="section-eyebrow">Practical Field Operations</div>
+          <h2 class="section-title">Farmer's Field Execution Guide</h2>
+          <p class="section-description">
+            Clean evidence produces trustworthy recommendations. Here is how producers and agronomists ensure maximum diagnostic fidelity in the field.
+          </p>
+        </div>
+
+        <div class="guide-grid">
+          <!-- Step-by-step practical guide -->
+          <div class="guide-panel">
+            <h3 class="guide-panel-title">
+              <svg width="24" height="24" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="color: #168a4d;"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/></svg>
+              High-Fidelity Evidence Protocol
+            </h3>
+
+            <div class="guide-steps-list">
+              <div class="guide-step-item">
+                <span class="guide-step-badge">1</span>
+                <div class="guide-step-content">
+                  <h5>Capture in Diffused Daylight</h5>
+                  <p>Avoid harsh midday shadows or extreme direct lens glare. Early morning or overcast conditions provide ideal balanced color reproduction for foliar symptom analysis.</p>
+                </div>
+              </div>
+
+              <div class="guide-step-item">
+                <span class="guide-step-badge">2</span>
+                <div class="guide-step-content">
+                  <h5>Inspect Both Leaf Sides</h5>
+                  <p>Many fungal spores and insect pests colonize the abaxial (underside) leaf surface. Capture both upper and lower leaf surfaces for complete diagnostic visibility.</p>
+                </div>
+              </div>
+
+              <div class="guide-step-item">
+                <span class="guide-step-badge">3</span>
+                <div class="guide-step-content">
+                  <h5>Maintain Field Geolocation</h5>
+                  <p>Ensure device GPS is active inside the registered parcel. The system cross-references weather history, soil profiles, and satellite passes using your exact coordinates.</p>
+                </div>
+              </div>
+
+              <div class="guide-step-item">
+                <span class="guide-step-badge">4</span>
+                <div class="guide-step-content">
+                  <h5>Review Confidence Before Spraying</h5>
+                  <p>Always inspect the calibrated confidence score. If a symptom falls into uncertain bounds or triggers an escalation notice, await human agronomy review.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Trust & Agronomic Safety Card -->
+          <div class="trust-principles-card">
+            <div>
+              <span style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.08em; color: #86efac; font-weight: 700;">Agronomic Integrity Charter</span>
+              <h3 style="margin-top: 0.5rem;">Why We Never Claim 100% Certainty</h3>
+              <p>
+                Farming deals with living biological organisms subject to fluctuating winds, soil variability, nutrient locks, and complex co-infections. Any software promising 100% instant diagnosis ignores agronomic reality.
+              </p>
+              
+              <ul class="trust-items-list">
+                <li class="trust-item">
+                  <svg fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/></svg>
+                  <span><strong>Data Sovereignty:</strong> Your farm boundary, yield data, and photos remain your legal property.</span>
+                </li>
+                <li class="trust-item">
+                  <svg fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/></svg>
+                  <span><strong>Empirical Transparency:</strong> Full audit logs of why an AI reached a conclusion and which environmental factors contributed.</span>
+                </li>
+                <li class="trust-item">
+                  <svg fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/></svg>
+                  <span><strong>Accredited Human Escalation:</strong> Seamless transition to certified plant pathologists when risks warrant direct human judgment.</span>
+                </li>
+              </ul>
+            </div>
+
+            <div style="margin-top: 2rem; padding-top: 1.5rem; border-top: 1px solid rgba(255, 255, 255, 0.15);">
+              <a href="#about" class="btn btn-secondary" style="width: 100%; justify-content: center;">Read Our Agronomic Philosophy</a>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- =========================================================================
+         6. Pricing Section (Clean, Honest SaaS Tiers)
+         ========================================================================= -->
+    <section id="pricing" class="section-padding pricing-section">
+      <div class="container">
+        <div class="section-header">
+          <div class="section-eyebrow">Predictable Subscription Tiers</div>
+          <h2 class="section-title">Transparent Pricing For Every Acreage</h2>
+          <p class="section-description">
+            Honest agritech SaaS pricing. No fabricated discounts, no hidden metering, and no lock-in. Scale as your acreage grows.
+          </p>
+        </div>
+
+        <div class="pricing-grid">
+          <!-- Tier 1: Family Farm / Individual Producer -->
+          <div class="pricing-card">
+            <h3 class="pricing-tier-name">Individual Grower</h3>
+            <p class="pricing-tier-target">For independent farmers, family operations, and focused orchards.</p>
+            <div class="pricing-tier-type">Core Farm Tier</div>
+            <div class="pricing-tier-sub">Billed per season or annually per farm</div>
+
+            <ul class="pricing-features">
+              <li>
+                <svg fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+                Up to 3 registered field boundary parcels
+              </li>
+              <li>
+                <svg fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+                Smart Crop Camera & Evidence Validation
+              </li>
+              <li>
+                <svg fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+                Hyperlocal weather & frost alerts
+              </li>
+              <li>
+                <svg fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+                Basic ET₀ irrigation water balance
+              </li>
+              <li>
+                <svg fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+                Standard agronomist escalation queue
+              </li>
+            </ul>
+
+            <a href="#contact" class="btn btn-secondary" style="width: 100%;">Select Grower Tier</a>
+          </div>
+
+          <!-- Tier 2: Commercial Farm & Agronomy Group -->
+          <div class="pricing-card featured">
+            <span class="pricing-featured-tag">Most Popular For Operations</span>
+            <h3 class="pricing-tier-name">Commercial Operations</h3>
+            <p class="pricing-tier-target">For medium-to-large commercial farms and agricultural managers.</p>
+            <div class="pricing-tier-type">Pro Scale Tier</div>
+            <div class="pricing-tier-sub">Acreage-based modular licensing</div>
+
+            <ul class="pricing-features">
+              <li>
+                <svg fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+                Unlimited field polygons & GIS zone mapping
+              </li>
+              <li>
+                <svg fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+                Sentinel-2 satellite NDVI & NDRE canopy updates
+              </li>
+              <li>
+                <svg fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+                Depth-stratified soil moisture modeling
+              </li>
+              <li>
+                <svg fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+                Multi-operator field scouting logins
+              </li>
+              <li>
+                <svg fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+                Priority SLA agronomist escalation review
+              </li>
+            </ul>
+
+            <a href="#contact" class="btn btn-primary" style="width: 100%;">Start Pro Onboarding</a>
+          </div>
+
+          <!-- Tier 3: Enterprise & Co-op -->
+          <div class="pricing-card">
+            <h3 class="pricing-tier-name">Enterprise & Co-op</h3>
+            <p class="pricing-tier-target">For agricultural co-operatives, agribusinesses, and input suppliers.</p>
+            <div class="pricing-tier-type">Custom Contract</div>
+            <div class="pricing-tier-sub">Tailored to regional fleet acreage & API needs</div>
+
+            <ul class="pricing-features">
+              <li>
+                <svg fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+                Regional multi-farm aggregation dashboard
+              </li>
+              <li>
+                <svg fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+                Dedicated agronomist desk routing
+              </li>
+              <li>
+                <svg fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+                Secure API pipelines (GeoJSON, GeoTIFF, CSV)
+              </li>
+              <li>
+                <svg fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+                Single Sign-On (SAML/OIDC) & audit trails
+              </li>
+              <li>
+                <svg fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+                Dedicated Agronomy Solutions Architect
+              </li>
+            </ul>
+
+            <a href="#contact" class="btn btn-secondary" style="width: 100%;">Contact Enterprise Desk</a>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- =========================================================================
+         7. About Section
+         ========================================================================= -->
+    <section id="about" class="section-padding about-section">
+      <div class="container about-grid">
+        <div class="about-content">
+          <div class="section-eyebrow">Our Philosophy</div>
+          <h3>Built For The Reality Of Farming</h3>
+          <p>
+            AgriTrustGeoAgent was founded on a simple observation: agricultural technology too often forces farmers to choose between unreliable computer-vision toys and prohibitively expensive manual field scouting.
+          </p>
+          <p>
+            We bridge this divide. By requiring evidence validation before automated processing and anchoring every image in hyperlocal weather, soil taxonomy, and satellite context, we deliver intelligence growers can defend before spraying, fertilizing, or irrigating.
+          </p>
+
+          <div class="about-pillars">
+            <div class="about-pillar-box">
+              <h5>Farmer-First Privacy</h5>
+              <p>Your field imagery, yield records, and boundaries belong strictly to you. No predatory broker sharing.</p>
+            </div>
+            <div class="about-pillar-box">
+              <h5>Calibrated Certainty</h5>
+              <p>Every inference states its confidence margin. No dangerous over-confidence in high-stakes pest situations.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="about-spec-card">
+          <h4>Platform Architectural Principles</h4>
+          <div class="about-spec-list">
+            <div class="spec-list-item">
+              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
+              <div>
+                <h6>Zero Fake Confidence</h6>
+                <p>We reject blanket guarantees. If optical quality or environmental telemetry is ambiguous, our system transparently defers to expert review.</p>
+              </div>
+            </div>
+
+            <div class="spec-list-item">
+              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064"/></svg>
+              <div>
+                <h6>Geospatial Grounding</h6>
+                <p>An image is only as valuable as its coordinates. We integrate parcel boundaries with satellite vegetation indices to prevent localized errors.</p>
+              </div>
+            </div>
+
+            <div class="spec-list-item">
+              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"/></svg>
+              <div>
+                <h6>Human Agronomist Partnership</h6>
+                <p>Technology augments certified agronomists rather than pretending to replace them. Our escalation desk keeps human experts in the loop.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- =========================================================================
+         8. Contact / Farm Consultation Section
+         ========================================================================= -->
+    <section id="contact" class="section-padding contact-section">
+      <div class="container">
+        <div class="section-header">
+          <div class="section-eyebrow">Connect With Us</div>
+          <h2 class="section-title">Schedule a Farm Consultation</h2>
+          <p class="section-description">
+            Speak directly with our agronomy technical team about onboarding your acreage, integrating weather stations, or connecting co-op fleet tools.
+          </p>
+        </div>
+
+        <div class="contact-layout">
+          <!-- Information Panel -->
+          <div class="contact-info-card">
+            <h3>Direct Field Inquiries</h3>
+            <p>
+              Whether you manage 50 acres of specialty horticulture or 10,000 acres of row crops, we tailor deployment to your operational boundaries.
+            </p>
+
+            <div class="contact-channels">
+              <div class="contact-channel-item">
+                <div class="channel-icon-box">
+                  <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
+                </div>
+                <div class="channel-details">
+                  <h6>Agronomy Technical Support</h6>
+                  <p>support@agritrustgeo.com</p>
+                </div>
+              </div>
+
+              <div class="contact-channel-item">
+                <div class="channel-icon-box">
+                  <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/></svg>
+                </div>
+                <div class="channel-details">
+                  <h6>Enterprise & Co-operative Desk</h6>
+                  <p>enterprise@agritrustgeo.com</p>
+                </div>
+              </div>
+
+              <div class="contact-channel-item">
+                <div class="channel-icon-box">
+                  <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+                </div>
+                <div class="channel-details">
+                  <h6>Geospatial Field Operations</h6>
+                  <p>Regional Pilot Coordination</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Contact Form -->
+          <div class="contact-form-card">
+            <form id="contactForm" novalidate>
+              <div class="form-row">
+                <div class="form-group">
+                  <label for="contactName" class="form-label">Full Name *</label>
+                  <input type="text" id="contactName" class="form-input" placeholder="e.g. Sarah Mitchell" required>
+                </div>
+
+                <div class="form-group">
+                  <label for="contactEmail" class="form-label">Email Address *</label>
+                  <input type="email" id="contactEmail" class="form-input" placeholder="sarah@farmdomain.com" required>
+                </div>
+              </div>
+
+              <div class="form-row">
+                <div class="form-group">
+                  <label for="contactFarm" class="form-label">Farm / Organization Name</label>
+                  <input type="text" id="contactFarm" class="form-input" placeholder="e.g. High Valley Orchards">
+                </div>
+
+                <div class="form-group">
+                  <label for="contactType" class="form-label">Operation Type</label>
+                  <select id="contactType" class="form-select">
+                    <option value="Independent Producer">Individual Farmer / Producer</option>
+                    <option value="Commercial Farm">Commercial Farm Operation</option>
+                    <option value="Agricultural Co-op">Agricultural Co-operative</option>
+                    <option value="Agronomist Consultant">Certified Agronomist / Consultant</option>
+                    <option value="Agribusiness / Input">Agribusiness / Input Supplier</option>
+                  </select>
+                </div>
+              </div>
+
+              <div class="form-group">
+                <label for="contactNotes" class="form-label">Field Details / Inquiries</label>
+                <textarea id="contactNotes" class="form-textarea" rows="4" placeholder="Tell us about your primary crops, acreage, regional soil/weather challenges, or integration needs..."></textarea>
+              </div>
+
+              <button type="submit" class="btn btn-primary btn-lg" style="width: 100%;">
+                Submit Farm Consultation Request
+              </button>
+
+              <div id="contactFeedback" class="form-feedback" role="alert"></div>
+            </form>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- =========================================================================
+         8b. Farmer-Focused CTA Section
+         ========================================================================= -->
+    <section class="final-cta-section">
+      <div class="container final-cta-container">
+        <h2 class="final-cta-title">Start Managing Your Farm</h2>
+        <p class="final-cta-desc">
+          Replace speculation with empirical ground-truth intelligence. Equip your fields with evidence validation, multi-layer environmental context, and trusted agronomic oversight.
+        </p>
+
+        <div class="final-cta-actions">
+          <a href="#contact" class="btn btn-primary btn-lg" style="background-color: #22c55e; color: #041d10;">
+            Schedule Onboarding Call
+          </a>
+          <button class="btn btn-secondary btn-lg js-open-login" style="background-color: transparent; color: #ffffff; border-color: rgba(255,255,255,0.3);">
+            Access Producer Portal
+          </button>
+        </div>
+
+        <p class="final-cta-notice">
+          Production-grade architecture designed for field reliability, data sovereignty, and agronomic truth.
+        </p>
+      </div>
+    </section>
+  </main>
+
+  <!-- =========================================================================
+       9. Professional Agritech Footer
+       ========================================================================= -->
+  <footer class="site-footer" role="contentinfo">
+    <div class="container">
+      <div class="footer-grid">
+        <!-- Brand Col -->
+        <div class="footer-brand">
+          <h4>
+            <svg width="24" height="24" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <rect width="40" height="40" rx="8" fill="#15663c"/>
+              <polygon points="20,8 32,15 32,29 20,34 8,29 8,15" stroke="#86efac" stroke-width="2" fill="none"/>
+              <circle cx="20" cy="22" r="5" fill="#86efac"/>
+            </svg>
+            AgriTrustGeoAgent
+          </h4>
+          <p>
+            Evidence-based agronomic intelligence unifying field imagery, verification gates, weather dynamics, soil taxonomy, satellite monitoring, and human agronomist escalation.
+          </p>
+          <span class="footer-badge">
+            <svg width="12" height="12" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M2.166 4.999A11.954 11.954 0 0010 1.944 11.954 11.954 0 0017.834 5c.11.65.166 1.32.166 2.001 0 5.225-3.34 9.67-8 11.317C5.34 16.67 2 12.225 2 7c0-.682.057-1.35.166-2.001zm11.541 3.708a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/></svg>
+            Production Foundation
+          </span>
+        </div>
+
+        <!-- Col 1: Platform Capabilities -->
+        <div class="footer-column">
+          <h5>Core Capabilities</h5>
+          <ul class="footer-links">
+            <li><a href="#features">Smart Crop Camera</a></li>
+            <li><a href="#features">Evidence Validation</a></li>
+            <li><a href="#features">Farm Brain Intelligence</a></li>
+            <li><a href="#features">Geo Field Risk Map</a></li>
+            <li><a href="#features">Weather Intelligence</a></li>
+            <li><a href="#features">Smart Irrigation (ET₀)</a></li>
+            <li><a href="#features">Soil Taxonomy Integration</a></li>
+            <li><a href="#features">Satellite Canopy Indices</a></li>
+            <li><a href="#features">Agronomist Escalation</a></li>
+          </ul>
+        </div>
+
+        <!-- Col 2: Evidence & Workflow -->
+        <div class="footer-column">
+          <h5>Process & Standards</h5>
+          <ul class="footer-links">
+            <li><a href="#workflow">6-Step Evidence Workflow</a></li>
+            <li><a href="#workflow">Integrity Screening Gate</a></li>
+            <li><a href="#workflow">Confidence Calibration</a></li>
+            <li><a href="#guide">Field Photography Protocol</a></li>
+            <li><a href="#guide">Parcel Boundary Rules</a></li>
+            <li><a href="#about">Agronomic Philosophy</a></li>
+          </ul>
+        </div>
+
+        <!-- Col 3: Organization & Legal -->
+        <div class="footer-column">
+          <h5>Governance & Access</h5>
+          <ul class="footer-links">
+            <li><a href="#pricing">Subscription Tiers</a></li>
+            <li><a href="#contact">Farm Consultations</a></li>
+            <li><a href="#login" class="js-open-login">Producer Portal Login</a></li>
+            <li><a href="#login" class="js-open-login">Agronomist Escalation Desk</a></li>
+            <li><a href="#about">Data Sovereignty Charter</a></li>
+            <li><a href="#about">Agricultural Safety Notice</a></li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="footer-bottom">
+        <p>&copy; 2026 AgriTrustGeoAgent Inc. All rights reserved. Built for agricultural resilience and agronomic truth.</p>
+        <div class="footer-bottom-links">
+          <a href="#about">Privacy & Data Rights</a>
+          <a href="#about">Agricultural Disclaimer</a>
+          <a href="#about">Terms of Service</a>
+        </div>
+      </div>
+    </div>
+  </footer>
+
+  <!-- =========================================================================
+       10. Farmer-First Portal Access / Login Modal
+       ========================================================================= -->
+  <div id="authModal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="authModalBrand">
+    <div class="modal-card auth-card">
+      <button id="closeAuthModal" class="modal-close-btn" aria-label="Close dialog">&times;</button>
+
+      <!-- Farmer Welcome Header -->
+      <div class="auth-header">
+        <div class="auth-brand" id="authModalBrand">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#168a4d" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 2L2 7l10 5 10-5-10-5z"></path>
+            <path d="M2 17l10 5 10-5"></path>
+            <path d="M2 12l10 5 10-5"></path>
+          </svg>
+          <span>AgriTrustGeoAgent</span>
+        </div>
+        <h3 class="auth-title">Welcome back</h3>
+        <p class="auth-subtitle">Your farm intelligence, in one place.</p>
+      </div>
+
+      <!-- Feedback Banner for all panes -->
+      <div id="authFeedback" class="auth-feedback-banner" style="display: none;"></div>
+
+      <!-- PANE 1: Main Provider Options -->
+      <div id="authOptionsPane" class="auth-pane active">
+        <button type="button" id="btnAuthGoogle" class="btn-auth-provider btn-google">
+          <svg class="provider-icon" width="20" height="20" viewBox="0 0 24 24">
+            <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.66-5.17 3.66-9.17z"/>
+            <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.15C3.26 21.36 7.33 24 12 24z"/>
+            <path fill="#FBBC05" d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.25C.45 8.18 0 9.99 0 12s.45 3.82 1.25 5.42l4.03-3.15z"/>
+            <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.33 0 3.26 2.64 1.25 6.58l4.03 3.15c.95-2.83 3.6-4.98 6.72-4.98z"/>
+          </svg>
+          <span>Continue with Google</span>
+        </button>
+
+        <button type="button" id="btnAuthPhone" class="btn-auth-provider btn-phone">
+          <svg class="provider-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path>
+          </svg>
+          <span>Continue with Phone</span>
+        </button>
+
+        <div class="auth-divider">
+          <span>or</span>
+        </div>
+
+        <button type="button" id="btnAuthEmail" class="btn-auth-provider btn-email">
+          <svg class="provider-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path>
+            <polyline points="22,6 12,13 2,6"></polyline>
+          </svg>
+          <span>Continue with Email</span>
+        </button>
+      </div>
+
+      <!-- PANE 2: Phone Authentication Flow -->
+      <div id="authPhonePane" class="auth-pane" style="display: none;">
+        <button type="button" class="btn-auth-back js-auth-back" data-target="options">
+          &larr; All sign-in options
+        </button>
+
+        <!-- Step A: Enter Phone Number -->
+        <div id="phoneStepNumber">
+          <h4 class="pane-title">Mobile Phone Verification</h4>
+          <p class="pane-subtitle">Enter your mobile number to receive a secure one-time verification code.</p>
+
+          <div class="form-group">
+            <label for="inputFarmerPhone" class="form-label">Phone Number *</label>
+            <div class="phone-input-wrapper">
+              <span class="country-prefix">&#x1F1EE;&#x1F1F3; +91</span>
+              <input type="tel" id="inputFarmerPhone" class="form-input phone-number-field" placeholder="98765 43210" maxlength="10" autocomplete="tel">
+            </div>
+            <div class="auth-field-hint">Indian (+91) mobile numbers supported for SMS verification.</div>
+          </div>
+
+          <button type="button" id="btnSendPhoneOtp" class="btn btn-primary auth-submit-btn">
+            <span class="btn-spinner" id="phoneOtpSpinner" style="display: none;"></span>
+            <span id="phoneOtpBtnText">Send Verification Code</span>
+          </button>
+        </div>
+
+        <!-- Step B: Enter 6-Digit OTP Code -->
+        <div id="phoneStepOtp" style="display: none;">
+          <h4 class="pane-title">Enter Verification Code</h4>
+          <p class="pane-subtitle">We sent a 6-digit code to <strong id="displayTargetPhone">+91 XXXXX XXXXX</strong>.</p>
+
+          <div class="form-group">
+            <label for="inputOtpToken" class="form-label">6-Digit Verification Code *</label>
+            <input type="text" id="inputOtpToken" class="form-input otp-code-input" placeholder="123456" maxlength="6" autocomplete="one-time-code" inputmode="numeric">
+          </div>
+
+          <button type="button" id="btnVerifyPhoneOtp" class="btn btn-primary auth-submit-btn">
+            <span class="btn-spinner" id="verifyOtpSpinner" style="display: none;"></span>
+            <span id="verifyOtpBtnText">Verify & Continue</span>
+          </button>
+
+          <div class="otp-resend-row">
+            <span id="otpCooldownText" style="font-size: 0.8125rem; color: var(--text-muted);">Resend code in <strong id="otpTimerCount">30</strong>s</span>
+            <button type="button" id="btnResendOtp" class="btn-link" style="display: none;">Resend Code</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- PANE 3: Email Fallback Flow -->
+      <div id="authEmailPane" class="auth-pane" style="display: none;">
+        <button type="button" class="btn-auth-back js-auth-back" data-target="options">
+          &larr; All sign-in options
+        </button>
+
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; font-size: 0.8125rem;">
+          <h4 class="pane-title" id="emailPaneTitle" style="margin-bottom: 0;">Sign In with Email</h4>
+          <div class="email-mode-toggle">
+            <button type="button" id="authModeSignIn" class="mode-tab-btn active">Sign In</button>
+            <button type="button" id="authModeSignUp" class="mode-tab-btn">Register</button>
+          </div>
+        </div>
+
+        <form id="authForm">
+          <div class="form-group">
+            <label for="authEmail" class="form-label">Email Address *</label>
+            <input type="email" id="authEmail" class="form-input" placeholder="grower@farmoperation.com" required autocomplete="username">
+          </div>
+
+          <div class="form-group">
+            <label for="authPassword" class="form-label">Security Passcode *</label>
+            <input type="password" id="authPassword" class="form-input" placeholder="••••••••••••" minlength="6" required autocomplete="current-password">
+          </div>
+
+          <!-- Extra Registration Fields (Hidden in Sign In mode) -->
+          <div id="authRegisterFields" style="display: none;">
+            <div class="form-group">
+              <label for="authFullName" class="form-label">Full Legal / Operator Name *</label>
+              <input type="text" id="authFullName" class="form-input" placeholder="e.g. Eleanor Vance">
+            </div>
+            <div class="form-group">
+              <label for="authOrgName" class="form-label">Farm Operation / Enterprise Name</label>
+              <input type="text" id="authOrgName" class="form-input" placeholder="e.g. Vance Heritage Orchards">
+            </div>
+          </div>
+
+          <button type="submit" id="authSubmitBtn" class="btn btn-primary auth-submit-btn">
+            <span id="authSubmitSpinner" class="btn-spinner" style="display: none;"></span>
+            <span id="authSubmitBtnText">Sign In to Farm Portal</span>
+          </button>
+
+          <div id="authModePrompt" class="auth-mode-prompt" style="margin-top: 1rem; text-align: center; font-size: 0.8125rem; color: var(--text-muted);">
+            <span id="authPromptText">New to AgriTrust?</span>
+            <button type="button" id="authPromptLink" class="auth-prompt-link">Create an Account &rarr;</button>
+          </div>
+        </form>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- =========================================================================
+       10B. First-Time Farmer Setup Modal
+       ========================================================================= -->
+  <div id="farmerSetupModal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="setupModalTitle">
+    <div class="modal-card setup-card">
+      <div class="setup-header">
+        <div class="setup-eyebrow">🌾 Welcome to AgriTrustGeoAgent</div>
+        <h3 id="setupModalTitle" class="setup-title">Let's set up your farm</h3>
+        <p class="setup-subtitle">Complete these 4 quick steps to personalize your farm intelligence dashboard.</p>
+      </div>
+
+      <div id="setupFeedback" class="auth-feedback-banner" style="display: none;"></div>
+
+      <form id="farmerSetupForm">
+        <!-- Step 1 -->
+        <div class="setup-step">
+          <div class="step-badge">Step 1</div>
+          <label for="setupFarmerName" class="form-label">Your Full Name *</label>
+          <input type="text" id="setupFarmerName" class="form-input" placeholder="e.g. Ramesh Kumar" required>
+        </div>
+
+        <!-- Step 2 -->
+        <div class="setup-step">
+          <div class="step-badge">Step 2</div>
+          <label for="setupFarmName" class="form-label">Farm / Enterprise Name *</label>
+          <input type="text" id="setupFarmName" class="form-input" placeholder="e.g. Sri Lakshmi Agro Farms" required>
+        </div>
+
+        <!-- Step 3 -->
+        <div class="setup-step">
+          <div class="step-badge">Step 3</div>
+          <label for="setupFarmLocation" class="form-label">Farm Location (Village / Mandal / District) *</label>
+          <div class="setup-loc-input-group">
+            <input type="text" id="setupFarmLocation" class="form-input" placeholder="e.g. Tenali, Guntur, Andhra Pradesh" required>
+            <button type="button" id="btnSetupUseGps" class="btn btn-secondary btn-sm" title="Fill with current device location">
+              📍 Use Device Location
+            </button>
+          </div>
+        </div>
+
+        <!-- Step 4 -->
+        <div class="setup-step">
+          <div class="step-badge">Step 4</div>
+          <label class="form-label">Add Your First Field (Optional)</label>
+          <div class="setup-field-row">
+            <input type="text" id="setupFieldName" class="form-input" placeholder="Field name (e.g. North Plot)">
+            <input type="text" id="setupCropVariety" class="form-input" placeholder="Crop variety (e.g. Chilli / Paddy)">
+          </div>
+        </div>
+
+        <button type="submit" id="btnCompleteSetup" class="btn btn-primary auth-submit-btn" style="margin-top: 1.5rem;">
+          <span id="setupSubmitSpinner" class="btn-spinner" style="display: none;"></span>
+          <span id="setupSubmitBtnText">Continue to Farm Dashboard &rarr;</span>
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <!-- =========================================================================
+       11. Edit Field Modal
+       ========================================================================= -->
+  <div id="editFieldModal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="editModalTitle">
+    <div class="modal-card">
+      <button id="closeEditFieldModal" class="modal-close-btn" aria-label="Close dialog">&times;</button>
+      <div class="modal-header">
+        <h3 id="editModalTitle" class="modal-title">Edit Parcel Details</h3>
+        <p class="modal-subtitle">Update agronomic metadata or reload boundary in the satellite GIS mapper.</p>
+      </div>
+
+      <form id="editFieldForm">
+        <input type="hidden" id="editFieldId">
+
+        <div class="form-group">
+          <label for="editFieldName" class="form-label">Parcel Name / Identifier *</label>
+          <input type="text" id="editFieldName" class="form-input" required placeholder="e.g. North 40 Corn">
+        </div>
+
+        <div class="form-group">
+          <label for="editCropVariety" class="form-label">Crop Variety *</label>
+          <input type="text" id="editCropVariety" class="form-input" required placeholder="e.g. Maize (Zea mays)">
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+          <div class="form-group">
+            <label for="editPlantingDate" class="form-label">Planting Date</label>
+            <input type="date" id="editPlantingDate" class="form-input">
+          </div>
+          <div class="form-group">
+            <label for="editSoilTexture" class="form-label">Soil Texture</label>
+            <select id="editSoilTexture" class="form-input">
+              <option value="">(Unspecified)</option>
+              <option value="Silt Loam">Silt Loam</option>
+              <option value="Clay Loam">Clay Loam</option>
+              <option value="Sandy Loam">Sandy Loam</option>
+              <option value="Loamy Sand">Loamy Sand</option>
+              <option value="Clay">Clay</option>
+              <option value="Organic Muck">Organic Muck</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Geodesic Area (PostGIS Computed)</label>
+          <div style="display: flex; gap: 0.5rem; align-items: center;">
+            <input type="text" id="editFieldAcreage" class="form-input" readonly style="background-color: var(--bg-card-alt); max-width: 140px;">
+            <span style="font-size: 0.8125rem; color: var(--text-muted);">acres</span>
+            <button type="button" id="btnRedrawBoundary" class="btn btn-secondary btn-sm" style="margin-left: auto;">
+              <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/></svg>
+              Redraw on Map
+            </button>
+          </div>
+        </div>
+
+        <button type="submit" class="btn btn-primary" style="width: 100%; margin-top: 1rem;">
+          Save Changes
+        </button>
+
+        <div id="editFieldFeedback" style="display: none; font-size: 0.8125rem; padding: 0.75rem; border-radius: 6px; margin-top: 1rem; border: 1px solid transparent;"></div>
+      </form>
+    </div>
+  </div>
+
+  <!-- =========================================================================
+       12. Delete Confirmation Modal
+       ========================================================================= -->
+  <div id="deleteFieldModal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="deleteModalTitle">
+    <div class="modal-card" style="max-width: 460px;">
+      <div class="modal-header">
+        <h3 id="deleteModalTitle" class="modal-title" style="color: #b91c1c;">Confirm Parcel Deletion</h3>
+        <p class="modal-subtitle">
+          Are you sure you want to delete <strong id="deleteFieldName">this parcel</strong>?
+        </p>
+      </div>
+      <p style="font-size: 0.875rem; color: var(--text-secondary); margin-bottom: 1.5rem; line-height: 1.5;">
+        This action is permanent. The parcel polygon, soil classification, and linked spatial telemetry will be permanently removed from your farm registry.
+      </p>
+      <div style="display: flex; gap: 0.75rem; justify-content: flex-end;">
+        <button type="button" id="btnCancelDelete" class="btn btn-secondary">Cancel</button>
+        <button type="button" id="btnConfirmDelete" class="btn" style="background-color: #dc2626; color: white;">Delete Parcel Permanently</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- =========================================================================
+       13. Farmer Profile Modal
+       ========================================================================= -->
+  <div id="farmerProfileModal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="profileModalTitle">
+    <div class="modal-card">
+      <button id="closeProfileModal" class="modal-close-btn" aria-label="Close dialog">&times;</button>
+      <div class="modal-header">
+        <h3 id="profileModalTitle" class="modal-title">Farm Operator Profile</h3>
+        <p class="modal-subtitle">Manage your producer identity, enterprise name, and agronomic contact details.</p>
+      </div>
+
+      <form id="farmerProfileForm">
+        <div class="form-group">
+          <label for="profileEmail" class="form-label">Authorized Account Email</label>
+          <input type="email" id="profileEmail" class="form-input" readonly style="background-color: var(--bg-card-alt); color: var(--text-muted);">
+        </div>
+
+        <div class="form-group">
+          <label for="profileFullName" class="form-label">Full Legal / Operator Name *</label>
+          <input type="text" id="profileFullName" class="form-input" required placeholder="e.g. Eleanor Vance">
+        </div>
+
+        <div class="form-group">
+          <label for="profileOrgName" class="form-label">Farm Operation / Enterprise Name</label>
+          <input type="text" id="profileOrgName" class="form-input" placeholder="e.g. Vance Heritage Orchards">
+        </div>
+
+        <div class="form-group">
+          <label for="profilePhone" class="form-label">Contact Phone Number</label>
+          <input type="tel" id="profilePhone" class="form-input" placeholder="+1 (555) 012-3456">
+        </div>
+
+        <!-- Connected Sign-in Methods / Account Linking Section -->
+        <div class="form-group" style="margin-top: 1.25rem; padding-top: 1rem; border-top: 1px solid var(--border-card);">
+          <label class="form-label">Connected Sign-In Methods</label>
+          <div id="linkedIdentitiesList" style="margin-bottom: 0.75rem; font-size: 0.85rem; display: flex; gap: 0.5rem; flex-wrap: wrap;">
+            <!-- Rendered dynamically with Email, Google, Phone badges -->
+          </div>
+          <button type="button" id="btnLinkGoogle" class="btn btn-secondary btn-sm" style="display: none; width: 100%;">
+            🔗 Link Google Account
+          </button>
+        </div>
+
+        <button type="submit" class="btn btn-primary" style="width: 100%; margin-top: 1rem;">
+          Save Profile
+        </button>
+
+        <div id="profileFeedback" style="display: none; font-size: 0.8125rem; padding: 0.75rem; border-radius: 6px; margin-top: 1rem; border: 1px solid transparent;"></div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Scripts -->
+  <script src="js/vendor/supabase.js"></script>
+  <script>
+    if (!window.supabase) {
+      document.write('<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"><\/script>');
+    }
+  </script>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="js/supabaseClient.js"></script>
+  <script src="js/fieldManager.js"></script>
+  <script src="js/farmerDashboard.js"></script>
+  <script src="js/cropCamera.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>

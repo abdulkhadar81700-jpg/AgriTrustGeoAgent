@@ -1,0 +1,2 @@
+# AgriTrustGeoAgent - Production Dependencies
+Pillow>=10.0.0

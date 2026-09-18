@@ -1,0 +1,6 @@
+# AgriTrustGeoAgent - Netlify Reverse Proxy to Render Backend
+# Replace RENDER_BACKEND_URL_PLACEHOLDER with your actual Render service URL (e.g. https://agritrust-backend.onrender.com)
+/api/*  RENDER_BACKEND_URL_PLACEHOLDER/api/:splat  200
+
+# Single Page Application fallback for static routing
+/*      /index.html                                200
