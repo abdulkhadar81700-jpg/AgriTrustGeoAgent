@@ -15,7 +15,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-from backend.copernicus_service import copernicus_service
+from backend.copernicus_service import copernicus_service, parse_geometry_to_geojson_polygon
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 FRONTEND_DIR = os.path.join(BASE_DIR, 'frontend')
@@ -56,7 +56,16 @@ class AgriTrustHTTPHandler(http.server.SimpleHTTPRequestHandler):
     def do_OPTIONS(self):
         """Handles browser CORS preflight requests for API endpoints."""
         clean_path = self.path.split('?')[0].rstrip('/')
-        if clean_path in ('/api/config', '/api/analyze-evidence', '/api/copernicus/health', '/api/satellite/health', '/api/copernicus/smoke-test', '/api/satellite/smoke-test'):
+        if clean_path in (
+            '/api/config',
+            '/api/analyze-evidence',
+            '/api/copernicus/health',
+            '/api/satellite/health',
+            '/api/copernicus/smoke-test',
+            '/api/satellite/smoke-test',
+            '/api/satellite/process-field',
+            '/api/copernicus/process-field'
+        ):
             self.send_response(204)
             self.send_cors_headers()
             self.send_header('Content-Length', '0')
@@ -483,6 +492,203 @@ class AgriTrustHTTPHandler(http.server.SimpleHTTPRequestHandler):
                 sys.stderr.write(f"[AgriTrustGeoAgent] AI Inference Execution Error: {e}\n")
                 self.send_json(500, {"error": f"Inference execution error: {str(e)}"})
                 return
+
+        # Dedicated endpoint for Sentinel-2 NDVI processing bound to a registered field boundary
+        if clean_path in ('/api/satellite/process-field', '/api/copernicus/process-field'):
+            # 1. Validate Bearer token (RLS Security Boundary)
+            auth_header = self.headers.get('Authorization', '').strip()
+            if not auth_header.startswith('Bearer '):
+                self.send_json(401, {"error": "Unauthorized: Missing Bearer token in Authorization header"})
+                return
+            token = auth_header.split('Bearer ', 1)[1].strip()
+            if not token:
+                self.send_json(401, {"error": "Unauthorized: Empty Bearer token"})
+                return
+
+            content_length = int(self.headers.get('Content-Length', 0))
+            if content_length == 0:
+                self.send_json(400, {"error": "Empty request body"})
+                return
+
+            try:
+                raw_body = self.rfile.read(content_length).decode('utf-8')
+                req_data = json.loads(raw_body)
+            except Exception as e:
+                self.send_json(400, {"error": f"Malformed JSON: {str(e)}"})
+                return
+
+            field_id = req_data.get('field_id')
+            if not field_id:
+                self.send_json(400, {"error": "Missing field_id in request body"})
+                return
+
+            supabase_url = os.environ.get('SUPABASE_URL', '').strip().rstrip('/')
+            pub_key = (os.environ.get('SUPABASE_PUBLISHABLE_KEY') or os.environ.get('SUPABASE_ANON_KEY', '')).strip()
+            service_key = os.environ.get('SUPABASE_SERVICE_ROLE_KEY', '').strip()
+
+            if not supabase_url or not pub_key:
+                self.send_json(500, {"error": "Server environment unconfigured (SUPABASE_URL/KEY missing)"})
+                return
+
+            # 2. Verify caller session token with Supabase Auth
+            try:
+                req_user = urllib.request.Request(
+                    f"{supabase_url}/auth/v1/user",
+                    headers={
+                        "apikey": pub_key,
+                        "Authorization": f"Bearer {token}"
+                    }
+                )
+                with urllib.request.urlopen(req_user, timeout=10) as resp:
+                    if resp.status != 200:
+                        self.send_json(401, {"error": "Unauthorized: Invalid or expired session token"})
+                        return
+                    user_data = json.loads(resp.read().decode('utf-8'))
+                    caller_user_id = user_data.get('id')
+            except urllib.error.HTTPError as e:
+                self.send_json(401, {"error": f"Unauthorized: Session verification failed ({e.code})"})
+                return
+            except Exception as e:
+                self.send_json(502, {"error": f"Authentication verification gateway error: {str(e)}"})
+                return
+
+            # 3. Query public.fields with caller Bearer token (enforces PostgreSQL RLS farmer_id = auth.uid())
+            try:
+                fields_url = f"{supabase_url}/rest/v1/fields?id=eq.{field_id}&select=id,name,crop_variety,boundary,acreage,farmer_id"
+                req_fields = urllib.request.Request(
+                    fields_url,
+                    headers={
+                        "apikey": pub_key,
+                        "Authorization": f"Bearer {token}"
+                    }
+                )
+                with urllib.request.urlopen(req_fields, timeout=10) as resp:
+                    field_rows = json.loads(resp.read().decode('utf-8'))
+            except urllib.error.HTTPError as e:
+                self.send_json(e.code, {"error": f"Field lookup failed: {e.read().decode('utf-8')}"})
+                return
+            except Exception as e:
+                self.send_json(500, {"error": f"Field lookup error: {str(e)}"})
+                return
+
+            if not field_rows:
+                self.send_json(404, {"error": "Field record not found or access denied (RLS boundary enforced)"})
+                return
+
+            field = field_rows[0]
+            boundary_raw = field.get('boundary')
+
+            # 4. Parse boundary geometry to GeoJSON Polygon
+            geojson_polygon = parse_geometry_to_geojson_polygon(boundary_raw)
+            if not geojson_polygon:
+                self.send_json(400, {"error": "Invalid or unparseable field parcel boundary geometry in database record"})
+                return
+
+            # 5. Execute Sentinel Hub NDVI processing restricted to field AOI
+            time_from = req_data.get('time_from')
+            time_to = req_data.get('time_to')
+
+            sat_result = copernicus_service.process_field_ndvi(
+                geometry=geojson_polygon,
+                time_from=time_from,
+                time_to=time_to
+            )
+
+            if not sat_result.get("success"):
+                status_code = sat_result.get("status_code", 502)
+                if status_code not in (400, 401, 403, 404, 500, 502, 503):
+                    status_code = 502
+                self.send_json(status_code, {
+                    "error": sat_result.get("error", "Copernicus Sentinel Hub processing failed"),
+                    "details": sat_result.get("details", "")
+                })
+                return
+
+            # 6. Upload processed raster to Supabase Storage (satellite-rasters bucket)
+            raster_bytes = sat_result.get("raster_bytes")
+            acq_date = sat_result.get("acquisition_date")
+            storage_path = f"fields/{field_id}/{acq_date}_ndvi.png"
+            storage_saved = False
+
+            if raster_bytes:
+                auth_key = service_key if service_key and 'your-service-role' not in service_key else token
+                upload_url = f"{supabase_url}/storage/v1/object/satellite-rasters/{storage_path}"
+                try:
+                    req_upload = urllib.request.Request(
+                        upload_url,
+                        data=raster_bytes,
+                        headers={
+                            "apikey": pub_key,
+                            "Authorization": f"Bearer {auth_key}",
+                            "Content-Type": "image/png",
+                            "x-upsert": "true"
+                        }
+                    )
+                    with urllib.request.urlopen(req_upload, timeout=15) as resp:
+                        if resp.status in (200, 201):
+                            storage_saved = True
+                except Exception as upload_err:
+                    sys.stderr.write(f"[AgriTrustGeoAgent] Storage upload notice: {upload_err}\n")
+
+            # 7. Persist canopy metrics to public.satellite_indices table
+            db_saved = False
+            index_record = None
+            mean_ndvi = sat_result.get("mean_ndvi", 0.0)
+            cloud_pct = sat_result.get("cloud_coverage_pct", 0.0)
+
+            auth_key = service_key if service_key and 'your-service-role' not in service_key else token
+            indices_url = f"{supabase_url}/rest/v1/satellite_indices"
+            payload_idx = {
+                "field_id": field_id,
+                "acquisition_date": acq_date,
+                "satellite_platform": "Sentinel-2 L2A",
+                "mean_ndvi": mean_ndvi,
+                "cloud_coverage_pct": cloud_pct,
+                "tile_storage_path": storage_path if storage_saved else None
+            }
+            try:
+                req_db = urllib.request.Request(
+                    indices_url,
+                    data=json.dumps(payload_idx).encode('utf-8'),
+                    headers={
+                        "apikey": pub_key,
+                        "Authorization": f"Bearer {auth_key}",
+                        "Content-Type": "application/json",
+                        "Prefer": "return=representation"
+                    }
+                )
+                with urllib.request.urlopen(req_db, timeout=10) as resp:
+                    if resp.status in (200, 201):
+                        db_res = json.loads(resp.read().decode('utf-8'))
+                        if db_res:
+                            index_record = db_res[0]
+                            db_saved = True
+            except Exception as db_err:
+                sys.stderr.write(f"[AgriTrustGeoAgent] satellite_indices persistence notice: {db_err}\n")
+
+            # 8. Return comprehensive, secure processing metrics
+            response_payload = {
+                "success": True,
+                "field_id": field_id,
+                "field_name": field.get("name"),
+                "crop_variety": field.get("crop_variety"),
+                "satellite_platform": "Sentinel-2 L2A",
+                "acquisition_date": acq_date,
+                "mean_ndvi": mean_ndvi,
+                "min_ndvi": sat_result.get("min_ndvi", 0.0),
+                "max_ndvi": sat_result.get("max_ndvi", 0.0),
+                "cloud_coverage_pct": cloud_pct,
+                "valid_pixels": sat_result.get("valid_pixels", 0),
+                "total_pixels": sat_result.get("total_pixels", 0),
+                "tile_storage_path": storage_path if storage_saved else None,
+                "stored_in_database": db_saved,
+                "stored_in_storage": storage_saved,
+                "record_id": index_record.get("id") if index_record else None,
+                "time_range": sat_result.get("time_range"),
+                "message": "Sentinel-2 L2A NDVI processing completed successfully for registered field boundary."
+            }
+            self.send_json(200, response_payload)
+            return
 
         self.send_json(404, {"error": "Endpoint not found"})
 
