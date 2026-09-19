@@ -491,7 +491,7 @@ CREATE POLICY "Agronomists view and manage escalation tickets"
 INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 VALUES 
     ('crop-evidence', 'crop-evidence', FALSE, 20971520, ARRAY['image/jpeg', 'image/png', 'image/webp']),
-    ('satellite-rasters', 'satellite-rasters', FALSE, 104857600, ARRAY['image/tiff', 'image/geotiff', 'application/json'])
+    ('satellite-rasters', 'satellite-rasters', FALSE, 104857600, ARRAY['image/png', 'image/tiff', 'image/geotiff', 'application/json'])
 ON CONFLICT (id) DO UPDATE SET
     public = EXCLUDED.public,
     file_size_limit = EXCLUDED.file_size_limit,

@@ -102,7 +102,12 @@ const AgriTrustFarmerDashboard = (() => {
       profilePhone: document.getElementById('profilePhone'),
       profileFeedback: document.getElementById('profileFeedback'),
       linkedIdentitiesList: document.getElementById('linkedIdentitiesList'),
-      btnLinkGoogle: document.getElementById('btnLinkGoogle')
+      btnLinkGoogle: document.getElementById('btnLinkGoogle'),
+
+      // Satellite NDVI Modal
+      fieldNdviModal: document.getElementById('fieldNdviModal'),
+      closeFieldNdviModal: document.getElementById('closeFieldNdviModal'),
+      btnCloseNdviModalBottom: document.getElementById('btnCloseNdviModalBottom')
     };
   }
 
@@ -197,8 +202,16 @@ const AgriTrustFarmerDashboard = (() => {
       dom.btnConfirmDelete.addEventListener('click', executeDeleteField);
     }
 
+    // Satellite NDVI Modal close handlers
+    if (dom.closeFieldNdviModal) {
+      dom.closeFieldNdviModal.addEventListener('click', closeNdviModal);
+    }
+    if (dom.btnCloseNdviModalBottom) {
+      dom.btnCloseNdviModalBottom.addEventListener('click', closeNdviModal);
+    }
+
     // Modal background click to close
-    [dom.editFieldModal, dom.deleteModal, dom.profileModal].forEach((modal) => {
+    [dom.editFieldModal, dom.deleteModal, dom.profileModal, dom.fieldNdviModal].forEach((modal) => {
       if (modal) {
         modal.addEventListener('click', (e) => {
           if (e.target === modal) {
@@ -402,6 +415,9 @@ const AgriTrustFarmerDashboard = (() => {
           </td>
           <td>
             <div class="table-action-btns">
+              <button type="button" class="btn btn-subtle btn-sm js-scan-ndvi" data-id="${field.id}" title="Scan Sentinel-2 L2A NDVI for this parcel">
+                🛰️ NDVI
+              </button>
               <button type="button" class="btn btn-subtle btn-sm js-add-evidence" data-id="${field.id}" title="Take or upload crop photo for this field">
                 <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"/><circle cx="12" cy="13" r="4" stroke-width="2"/></svg>
                 Photo
@@ -422,6 +438,7 @@ const AgriTrustFarmerDashboard = (() => {
         `;
 
         // Bind events
+        tr.querySelector('.js-scan-ndvi').addEventListener('click', () => handleScanNdviForField(field));
         tr.querySelector('.js-add-evidence').addEventListener('click', () => handleAddEvidenceForField(field));
         tr.querySelector('.js-view-map').addEventListener('click', () => handleFocusFieldOnMap(field));
         tr.querySelector('.js-edit-field').addEventListener('click', () => openEditModal(field));
@@ -451,6 +468,9 @@ const AgriTrustFarmerDashboard = (() => {
             <div><strong>Boundary:</strong> <span style="color: #166534; font-weight: 600;">PostGIS Verified</span></div>
           </div>
           <div class="mobile-card-actions">
+            <button type="button" class="btn btn-subtle btn-sm js-scan-ndvi-mob" title="Scan Sentinel-2 L2A NDVI">
+              🛰️ NDVI
+            </button>
             <button type="button" class="btn btn-subtle btn-sm js-add-evidence-mob">
               <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"/><circle cx="12" cy="13" r="4" stroke-width="2"/></svg>
               Evidence
@@ -464,6 +484,7 @@ const AgriTrustFarmerDashboard = (() => {
           </div>
         `;
 
+        card.querySelector('.js-scan-ndvi-mob').addEventListener('click', () => handleScanNdviForField(field));
         card.querySelector('.js-add-evidence-mob').addEventListener('click', () => handleAddEvidenceForField(field));
         card.querySelector('.js-view-map-mob').addEventListener('click', () => handleFocusFieldOnMap(field));
         card.querySelector('.js-edit-field-mob').addEventListener('click', () => openEditModal(field));
@@ -472,6 +493,24 @@ const AgriTrustFarmerDashboard = (() => {
         dom.fieldsCardsMobile.appendChild(card);
       });
     }
+  }
+
+  /**
+   * Action: Scan Sentinel-2 L2A Multispectral NDVI for Field
+   */
+  function handleScanNdviForField(field) {
+    if (!field || !field.id) return;
+    if (window.AgriTrustFieldManager && typeof window.AgriTrustFieldManager.scanFieldNdvi === 'function') {
+      window.AgriTrustFieldManager.scanFieldNdvi(field.id, field.name);
+    } else {
+      console.warn('[AgriTrustFarmerDashboard] AgriTrustFieldManager.scanFieldNdvi is unavailable.');
+    }
+  }
+
+  function closeNdviModal() {
+    if (!dom.fieldNdviModal) return;
+    dom.fieldNdviModal.classList.remove('active');
+    document.body.style.overflow = '';
   }
 
   /**
@@ -830,7 +869,12 @@ const AgriTrustFarmerDashboard = (() => {
   return {
     init,
     refresh: () => loadDashboardData(true),
-    openProfile: openProfileModal
+    openProfile: openProfileModal,
+    getFieldById: (id) => userFields.find(f => f.id === id) || null,
+    scanFieldNdvi: (fieldId) => {
+      const field = userFields.find(f => f.id === fieldId);
+      handleScanNdviForField(field || { id: fieldId, name: 'Field Parcel' });
+    }
   };
 })();
 

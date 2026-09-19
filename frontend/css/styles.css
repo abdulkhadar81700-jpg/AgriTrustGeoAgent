@@ -2518,6 +2518,309 @@ button, input, select, textarea {
   background-color: var(--color-primary-700);
 }
 
+.coord-input-container {
+  position: relative;
+  flex: 1;
+  display: flex;
+  align-items: center;
+}
+
+.coord-input-container .coord-jump-input {
+  width: 100%;
+}
+
+.search-clear-btn {
+  position: absolute;
+  right: 8px;
+  background: none;
+  border: none;
+  color: #94a3b8;
+  font-size: 1.1rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 50%;
+  transition: color 0.15s ease;
+}
+
+.search-clear-btn:hover {
+  color: #ffffff;
+}
+
+/* Autocomplete Dropdown */
+.search-results-dropdown {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 0;
+  right: 0;
+  background: rgba(15, 23, 42, 0.96);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: var(--radius-md);
+  max-height: 280px;
+  overflow-y: auto;
+  z-index: 1200;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+}
+
+.search-result-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.65rem;
+  padding: 0.65rem 0.85rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.search-result-item:last-child {
+  border-bottom: none;
+}
+
+.search-result-item:hover, .search-result-item.selected {
+  background-color: rgba(34, 197, 94, 0.18);
+}
+
+.search-result-icon {
+  font-size: 1rem;
+  line-height: 1.2;
+  margin-top: 2px;
+  flex-shrink: 0;
+}
+
+.search-result-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.search-result-primary {
+  font-size: 0.825rem;
+  font-weight: 700;
+  color: #ffffff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.search-result-secondary {
+  font-size: 0.725rem;
+  color: #94a3b8;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-top: 2px;
+}
+
+.search-type-badge {
+  display: inline-block;
+  font-size: 0.625rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background-color: rgba(56, 189, 248, 0.2);
+  color: #38bdf8;
+  letter-spacing: 0.5px;
+}
+
+.search-type-badge.coord {
+  background-color: rgba(34, 197, 94, 0.2);
+  color: #4ade80;
+}
+
+.search-status-item {
+  padding: 0.75rem 1rem;
+  font-size: 0.775rem;
+  color: #94a3b8;
+  text-align: center;
+}
+
+/* Multilingual Toggle Pills */
+.map-lang-toggle {
+  display: flex;
+  align-items: center;
+  background-color: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: var(--radius-sm);
+  padding: 2px;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.map-lang-btn {
+  background: none;
+  border: none;
+  color: #94a3b8;
+  font-size: 0.675rem;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.map-lang-btn:hover {
+  color: #ffffff;
+}
+
+.map-lang-btn.active {
+  background-color: var(--color-primary-600);
+  color: #ffffff;
+}
+
+/* Field Route Navigation Panel */
+.field-route-panel {
+  position: absolute;
+  top: 14px;
+  left: 14px;
+  z-index: 1000;
+  background: rgba(15, 23, 42, 0.94);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: var(--radius-md);
+  width: calc(100% - 28px);
+  max-width: 380px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  color: #ffffff;
+  overflow: hidden;
+}
+
+.route-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.65rem 0.85rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.route-panel-title {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+  color: #38bdf8;
+}
+
+.route-panel-body {
+  padding: 0.75rem 0.85rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.route-mode-selector {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 0.35rem;
+}
+
+.route-mode-btn {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: #cbd5e1;
+  padding: 0.35rem 0.4rem;
+  border-radius: var(--radius-sm);
+  font-size: 0.725rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  text-align: center;
+}
+
+.route-mode-btn:hover {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.route-mode-btn.active {
+  background: var(--color-primary-600);
+  border-color: var(--color-primary-500);
+  color: #ffffff;
+}
+
+.route-endpoints {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  font-size: 0.75rem;
+  background: rgba(0, 0, 0, 0.25);
+  padding: 0.5rem;
+  border-radius: var(--radius-sm);
+}
+
+.route-endpoint-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.route-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.route-dot.origin-dot {
+  background-color: #38bdf8;
+  box-shadow: 0 0 6px #38bdf8;
+}
+
+.route-dot.dest-dot {
+  background-color: #22c55e;
+  box-shadow: 0 0 6px #22c55e;
+}
+
+.route-metrics-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 0.4rem;
+}
+
+.metric-box {
+  background: rgba(255, 255, 255, 0.06);
+  padding: 0.4rem;
+  border-radius: var(--radius-sm);
+  text-align: center;
+}
+
+.metric-label {
+  display: block;
+  font-size: 0.65rem;
+  color: #94a3b8;
+  text-transform: uppercase;
+}
+
+.metric-val {
+  display: block;
+  font-size: 0.85rem;
+  font-weight: 800;
+  color: #f8fafc;
+  margin-top: 2px;
+}
+
+.routing-provider-notice {
+  font-size: 0.725rem;
+  color: #cbd5e1;
+  background: rgba(56, 189, 248, 0.1);
+  border: 1px solid rgba(56, 189, 248, 0.25);
+  padding: 0.45rem 0.6rem;
+  border-radius: var(--radius-sm);
+  line-height: 1.35;
+}
+
+.unauth-map-notice {
+  padding: 0.85rem;
+  font-size: 0.8rem;
+  color: #64748b;
+  text-align: center;
+  border: 1px dashed rgba(100, 116, 139, 0.4);
+  border-radius: var(--radius-sm);
+  background-color: rgba(248, 250, 252, 0.7);
+}
+
 /* Fullscreen Map Mode */
 .field-map-wrapper.map-fullscreen-active {
   position: fixed !important;
@@ -2939,6 +3242,150 @@ button, input, select, textarea {
     transform: scale(1.8);
     opacity: 0;
   }
+}
+
+/* Google Places Autocomplete Pac-Container Overrides */
+.pac-container {
+  background-color: rgba(15, 23, 42, 0.96) !important;
+  backdrop-filter: blur(12px) !important;
+  border: 1px solid rgba(255, 255, 255, 0.2) !important;
+  border-radius: var(--radius-md) !important;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5) !important;
+  font-family: inherit !important;
+  z-index: 10000 !important;
+  margin-top: 4px !important;
+}
+
+.pac-item {
+  padding: 8px 12px !important;
+  border-top: 1px solid rgba(255, 255, 255, 0.08) !important;
+  color: #cbd5e1 !important;
+  font-size: 0.8125rem !important;
+  cursor: pointer !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+}
+
+.pac-item:hover, .pac-item-selected {
+  background-color: rgba(34, 197, 94, 0.18) !important;
+  color: #ffffff !important;
+}
+
+.pac-item-query {
+  color: #ffffff !important;
+  font-size: 0.85rem !important;
+  font-weight: 700 !important;
+}
+
+.pac-matched {
+  color: #38bdf8 !important;
+  font-weight: 700 !important;
+}
+
+.pac-icon {
+  filter: invert(1) brightness(1.5) !important;
+}
+
+/* Google Maps InfoWindow Overrides */
+.gm-style .gm-style-iw-c {
+  background-color: #ffffff !important;
+  border-radius: 8px !important;
+  padding: 10px 14px !important;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25) !important;
+}
+
+.gm-style .gm-style-iw-tc::after {
+  background-color: #ffffff !important;
+}
+
+.gm-style .gm-style-iw-d {
+  overflow: auto !important;
+  max-width: 320px !important;
+  font-family: inherit !important;
+}
+
+/* Live Tracking Active State */
+#btnToggleTracking.active {
+  background: #dc2626 !important;
+  color: #ffffff !important;
+  border-color: #ef4444 !important;
+  box-shadow: 0 0 10px rgba(239, 68, 68, 0.6) !important;
+}
+
+/* GPS Corner Capture Button */
+#btnCaptureGpsCorner {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+#btnCaptureGpsCorner:not(:disabled) {
+  background-color: #0284c7;
+  border-color: #0369a1;
+  color: #ffffff;
+}
+
+#btnCaptureGpsCorner:not(:disabled):hover {
+  background-color: #0369a1;
+}
+
+/* Google Maps Platform Setup Banner */
+.google-maps-setup-banner {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 2rem;
+  background: radial-gradient(circle at 50% 40%, rgba(30, 41, 59, 0.95), rgba(15, 23, 42, 0.98));
+  color: #ffffff;
+  z-index: 50;
+  backdrop-filter: blur(8px);
+}
+
+.google-maps-setup-banner .setup-icon {
+  font-size: 2.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.google-maps-setup-banner h4 {
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: #f8fafc;
+  margin-bottom: 0.5rem;
+}
+
+.google-maps-setup-banner p {
+  font-size: 0.85rem;
+  color: #94a3b8;
+  max-width: 480px;
+  line-height: 1.5;
+  margin-bottom: 1rem;
+}
+
+.google-maps-setup-banner .setup-guide {
+  text-align: left;
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: var(--radius-sm);
+  padding: 0.85rem 1.15rem;
+  font-size: 0.775rem;
+  color: #cbd5e1;
+  line-height: 1.6;
+  max-width: 500px;
+}
+
+.google-maps-setup-banner .setup-guide pre {
+  margin-top: 0.35rem;
+  background: rgba(0, 0, 0, 0.6);
+  padding: 0.35rem 0.5rem;
+  border-radius: 4px;
+  font-family: var(--font-mono);
+  color: #38bdf8;
+  font-size: 0.75rem;
 }
 
 /* Registered Fields Drawer / Accordion */
@@ -4240,5 +4687,214 @@ button, input, select, textarea {
   opacity: 0.6;
   cursor: not-allowed;
 }
+
+/* ==========================================================================
+   Copernicus Sentinel-2 L2A NDVI Field Processing Styles
+   ========================================================================== */
+.field-ndvi-panel {
+  width: 100%;
+  margin-top: 0.5rem;
+  animation: fadeIn 0.25s ease-in-out;
+}
+
+.ndvi-loading-box {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  background-color: var(--bg-card-alt, #f8fafc);
+  border: 1px dashed var(--border-card, #cbd5e1);
+  border-radius: var(--radius-sm, 8px);
+  padding: 0.75rem 1rem;
+  font-size: 0.8125rem;
+  color: var(--text-primary, #0f172a);
+}
+
+.ndvi-loading-spinner {
+  width: 20px;
+  height: 20px;
+  border: 2px solid #e2e8f0;
+  border-top-color: #168a4d;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  flex-shrink: 0;
+}
+
+.ndvi-error-box {
+  background-color: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: var(--radius-sm, 8px);
+  padding: 0.65rem 0.85rem;
+  font-size: 0.8125rem;
+  color: #991b1b;
+}
+
+.ndvi-error-title {
+  font-weight: 700;
+  margin-bottom: 0.2rem;
+}
+
+.ndvi-results-card {
+  background-color: #ffffff;
+  border: 1px solid #d1fae5;
+  border-radius: var(--radius-sm, 8px);
+  padding: 0.85rem;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.ndvi-results-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  padding-bottom: 0.4rem;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.ndvi-platform-tag {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #065f46;
+  background-color: #d1fae5;
+  padding: 0.15rem 0.45rem;
+  border-radius: 4px;
+  margin-right: 0.4rem;
+}
+
+.ndvi-date-tag {
+  font-size: 0.75rem;
+  color: #64748b;
+}
+
+.ndvi-vigor-badge {
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 0.2rem 0.6rem;
+  border-radius: 9999px;
+  text-transform: uppercase;
+  letter-spacing: 0.025em;
+}
+
+.ndvi-vigor-badge.vigor-high {
+  background-color: #15803d;
+  color: #ffffff;
+}
+
+.ndvi-vigor-badge.vigor-moderate {
+  background-color: #eab308;
+  color: #713f12;
+}
+
+.ndvi-vigor-badge.vigor-low {
+  background-color: #ea580c;
+  color: #ffffff;
+}
+
+.ndvi-vigor-badge.vigor-bare {
+  background-color: #78716c;
+  color: #ffffff;
+}
+
+.ndvi-metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0.5rem;
+}
+
+.ndvi-metric-item {
+  background-color: #f8fafc;
+  border-radius: 6px;
+  padding: 0.45rem 0.6rem;
+  display: flex;
+  flex-direction: column;
+}
+
+.ndvi-metric-item.highlight {
+  background-color: #f0fdf4;
+  border: 1px solid #bbf7d0;
+}
+
+.ndvi-metric-label {
+  font-size: 0.7rem;
+  color: #64748b;
+  text-transform: uppercase;
+  font-weight: 600;
+}
+
+.ndvi-metric-val {
+  font-size: 1rem;
+  font-weight: 800;
+  color: #0f172a;
+}
+
+.ndvi-metric-item.highlight .ndvi-metric-val {
+  color: #166534;
+  font-size: 1.15rem;
+}
+
+.ndvi-storage-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  font-size: 0.7rem;
+  padding-top: 0.3rem;
+}
+
+.status-pill {
+  padding: 0.15rem 0.45rem;
+  border-radius: 4px;
+  font-weight: 600;
+}
+
+.status-pill.status-success {
+  background-color: #f0fdf4;
+  color: #166534;
+  border: 1px solid #bbf7d0;
+}
+
+.status-pill.status-neutral {
+  background-color: #f1f5f9;
+  color: #475569;
+  border: 1px solid #e2e8f0;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.ndvi-raster-preview-box {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  background-color: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: var(--radius-sm, 8px);
+  padding: 0.6rem 0.75rem;
+  margin-top: 0.25rem;
+}
+
+.ndvi-raster-thumb {
+  width: 56px;
+  height: 56px;
+  object-fit: cover;
+  border-radius: 4px;
+  border: 1px solid #cbd5e1;
+  background-color: #0f172a;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  flex-shrink: 0;
+}
+
+.ndvi-raster-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.75rem;
+  color: #334155;
+}
+
 
 

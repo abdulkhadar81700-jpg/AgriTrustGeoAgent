@@ -1,84 +1,102 @@
 /**
- * AgriTrustGeoAgent - Interactive Field Parcel Boundary Manager
- * High-resolution satellite mapping, touch-friendly polygon drawing/editing,
- * real-time WGS84 geodesic area calculations, self-intersection validation,
- * and PostGIS EWKT serialization for Supabase PostgreSQL.
+ * AgriTrustGeoAgent - Google Maps Platform Field Parcel & Location Manager
+ * 
+ * Enterprise Agricultural GIS powered by Google Maps Platform:
+ * - Official Google Maps Roadmap & Satellite/Hybrid imagery
+ * - Google Places global search & autocomplete (villages, mandals, towns, cities, districts, countries)
+ * - Google Geocoding & Reverse Geocoding with full administrative hierarchy
+ * - Device high-accuracy GPS sensor integration with live tracking & accuracy circle
+ * - Farmer GPS field corner capture ("Walk & Record") for precision parcel surveying
+ * - Interactive Google Polygon drawing, editing, and spherical geodesic area calculations
+ * - Authoritative PostGIS EWKT serialization for Supabase PostgreSQL
+ * - Real Google Directions turn-by-turn road navigation to field parcels
  */
 
 const AgriTrustFieldManager = (() => {
-  // State variables
+  // Core Google Maps objects
   let map = null;
-  let activeBasemap = 'satellite';
-  let satelliteLayer = null;
-  let streetLayer = null;
-  let labelsLayer = null;
+  let activeMapTypeId = 'hybrid'; // 'hybrid' (satellite + labels) | 'roadmap' (streets)
+  let googleMapsLoaded = false;
+  let googleMapsLoadError = null;
+  let geocoder = null;
+  let placesAutocomplete = null;
+  let directionsService = null;
+  let directionsRenderer = null;
 
   // Drawing state machine: 'IDLE' | 'DRAWING' | 'CLOSED'
   let drawState = 'IDLE';
-  let vertices = [];        // Array of { lat, lng }
-  let vertexMarkers = [];   // Array of L.marker
-  let previewPolyline = null; // L.polyline while drawing
-  let polygonLayer = null;  // L.polygon when closed
-  let existingFieldsLayers = null; // L.layerGroup for saved fields (initialized in initMap)
-  let savedFieldsMap = {};  // Map of fieldId -> { field, poly }
-  let editingFieldId = null; // null for new field, or UUID if editing existing field
+  let vertices = [];          // Array of { lat, lng }
+  let vertexMarkers = [];     // Array of google.maps.Marker
+  let previewPolyline = null; // google.maps.Polyline while drawing
+  let activePolygon = null;   // google.maps.Polygon when closed
+  let savedFieldPolygons = {}; // Map of fieldId -> google.maps.Polygon
+  let savedFieldsMap = {};    // Map of fieldId -> { field, poly }
+  let activeNdviOverlays = {}; // Map of fieldId -> google.maps.GroundOverlay
+  let editingFieldId = null;  // null for new field, or UUID if editing existing field
 
-  // Google Maps-style location tracking & fullscreen state
-  let currentGpsMarker = null; // L.marker for current GPS position
-  let currentAccuracyCircle = null; // L.circle for GPS accuracy radius
-  let currentGpsPosition = null; // { lat, lng, accuracy, timestamp, address, coords, tier, source }
+  // Routing state
+  let activeRouteData = null;  // { origin, destination, result }
+  let selectedRouteMode = 'driving';
+
+  // Geocoding & Multilingual state
+  let currentLanguage = 'en'; // 'en' | 'te' | 'hi'
+  let activeSearchMarker = null; // google.maps.Marker for search target
+  let activeSearchInfoWindow = null;
+
+  // Geolocation, GPS & Tracking state
+  let currentGpsMarker = null;       // google.maps.Marker with blue radar dot
+  let currentAccuracyCircle = null;  // google.maps.Circle for reported GPS accuracy radius
+  let currentGpsPosition = null;     // { lat, lng, accuracy, timestamp, address, coords, tier, source }
   let isFullscreen = false;
-  let watchId = null; // Geolocation watchPosition listener ID
-  let isTracking = false; // Whether continuous watch is active
-  let isSamplingAccuracy = false; // Whether multi-sample convergence engine is active
-  let bestPosition = null; // Best position encountered during sampling or session
-  let externalGnssProvider = null; // Hook for external Bluetooth / USB / RTK GNSS receiver
+  let watchId = null;                // Geolocation watchPosition listener ID
+  let isTracking = false;            // Continuous tracking toggle state
+  let autoCenterOnGps = true;        // Whether map follows GPS position automatically
+  let isSamplingAccuracy = false;    // Whether multi-sample convergence engine is active
+  let bestPosition = null;           // Best position encountered during sampling or session
+  let externalGnssProvider = null;   // Hook for external Bluetooth / USB / RTK GNSS receiver
 
   // DOM Elements cache
   let elements = {};
 
   /**
-   * Initializes the Field Manager module.
+   * Safe HTML Escaping Helper
    */
-  function init() {
-    cacheDOMElements();
-    if (typeof L === 'undefined') {
-      console.warn('[AgriTrustFieldManager] Leaflet (L) is not loaded yet. Retrying in 100ms...');
-      setTimeout(init, 100);
-      return;
-    }
-    if (!elements.mapContainer) {
-      console.warn('[AgriTrustFieldManager] Map container #fieldMap not found in DOM.');
-      return;
-    }
-
-    initMap();
-    bindUIEvents();
-    checkAuthState();
-
-    // Listen for auth changes to refresh fields
-    if (window.AgriTrustSupabase && window.AgriTrustSupabase.onAuthStateChange) {
-      window.AgriTrustSupabase.onAuthStateChange((event, session) => {
-        checkAuthState();
-      });
-    }
-
-    // Listen for Supabase initialization readiness
-    window.addEventListener('agritrust:supabaseReady', () => {
-      checkAuthState();
-    });
+  function escapeHTML(str) {
+    if (!str) return '';
+    return String(str).replace(/[&<>'"]/g, 
+      tag => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[tag] || tag)
+    );
   }
 
+  /**
+   * DOM Elements Cache
+   */
   function cacheDOMElements() {
     elements = {
       mapWrapper: document.getElementById('fieldMapWrapper'),
       mapContainer: document.getElementById('fieldMap'),
       startDrawBtn: document.getElementById('btnStartDraw'),
+      captureGpsCornerBtn: document.getElementById('btnCaptureGpsCorner'),
       undoPointBtn: document.getElementById('btnUndoPoint'),
       clearPolyBtn: document.getElementById('btnClearPoly'),
       locateGpsBtn: document.getElementById('btnLocateGps'),
+      toggleTrackingBtn: document.getElementById('btnToggleTracking'),
+      trackingBtnLabel: document.getElementById('trackingBtnLabel'),
       basemapToggleBtn: document.getElementById('btnToggleBasemap'),
+      toggleRoutingBtn: document.getElementById('btnToggleRouting'),
       fullscreenBtn: document.getElementById('btnToggleFullscreen'),
+      routePanel: document.getElementById('fieldRoutePanel'),
+      closeRoutePanelBtn: document.getElementById('btnCloseRoutePanel'),
+      routeModeBtns: document.querySelectorAll('.route-mode-btn'),
+      routeOriginName: document.getElementById('routeOriginName'),
+      routeDestName: document.getElementById('routeDestName'),
+      routeMetrics: document.getElementById('routeMetrics'),
+      routeDirectDistance: document.getElementById('routeDirectDistance'),
+      routeRoadDistance: document.getElementById('routeRoadDistance'),
+      routeTravelTime: document.getElementById('routeTravelTime'),
+      routingNotice: document.getElementById('routingNotice'),
+      routingNoticeText: document.getElementById('routingNoticeText'),
+      clearRouteBtn: document.getElementById('btnClearRoute'),
       locationCard: document.getElementById('fieldLocationCard'),
       closeLocationCardBtn: document.getElementById('btnCloseLocationCard'),
       locPrimaryPlace: document.getElementById('locPrimaryPlace'),
@@ -101,6 +119,9 @@ const AgriTrustFieldManager = (() => {
       manualJumpBtn: document.getElementById('btnManualJump'),
       coordJumpBtnText: document.getElementById('coordJumpBtnText'),
       coordInput: document.getElementById('manualCoordInput'),
+      clearSearchBtn: document.getElementById('btnClearSearch'),
+      searchResultsDropdown: document.getElementById('searchResultsDropdown'),
+      langButtons: document.querySelectorAll('.map-lang-btn'),
       saveFieldForm: document.getElementById('fieldRegistrationForm'),
       saveFieldBtn: document.getElementById('btnSaveField'),
       feedbackBox: document.getElementById('fieldValidationNotice'),
@@ -119,169 +140,453 @@ const AgriTrustFieldManager = (() => {
   }
 
   /**
-   * Initialize Leaflet Map with Esri World Imagery (High-Res Satellite) and OpenStreetMap
+   * Asynchronously load the official Google Maps JavaScript API
+   * Retrieves the client API key from /api/config.
    */
-  function initMap() {
+  async function loadGoogleMapsSDK() {
+    if (window.google && window.google.maps) {
+      googleMapsLoaded = true;
+      return true;
+    }
+
+    // Intercept Google Maps authentication failure gracefully
+    window.gm_authFailure = () => {
+      console.error('[Google Maps Platform] Authentication failed. Check API key and HTTP referrer restrictions.');
+      googleMapsLoadError = 'auth_failure';
+      renderSetupBanner('auth_failure');
+    };
+
+    let apiKey = '';
+    try {
+      const res = await fetch('/api/config', { cache: 'no-store' });
+      if (res.ok) {
+        const cfg = await res.json();
+        apiKey = (cfg.googleMapsApiKey || '').trim();
+      }
+    } catch (e) {
+      console.warn('[AgriTrustFieldManager] Could not read /api/config for Google Maps key:', e);
+    }
+
+    if (!apiKey) {
+      googleMapsLoadError = 'missing_key';
+      renderSetupBanner('missing_key');
+      return false;
+    }
+
+    return new Promise((resolve) => {
+      window.__agritrustGoogleMapsCallback = () => {
+        googleMapsLoaded = true;
+        resolve(true);
+      };
+
+      const script = document.createElement('script');
+      script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(apiKey)}&libraries=places,geometry&callback=__agritrustGoogleMapsCallback`;
+      script.async = true;
+      script.defer = true;
+      script.onerror = () => {
+        console.error('[Google Maps Platform] Failed to load Google Maps script.');
+        googleMapsLoadError = 'network_error';
+        renderSetupBanner('network_error');
+        resolve(false);
+      };
+      document.head.appendChild(script);
+    });
+  }
+
+  /**
+   * Render Google Maps Setup Guide Banner if key is missing or restricted
+   */
+  function renderSetupBanner(reason) {
+    if (!elements.mapWrapper) return;
+
+    let existingBanner = elements.mapWrapper.querySelector('.google-maps-setup-banner');
+    if (existingBanner) existingBanner.remove();
+
+    const banner = document.createElement('div');
+    banner.className = 'google-maps-setup-banner';
+
+    if (reason === 'auth_failure') {
+      banner.innerHTML = `
+        <div class="setup-icon">⚠️</div>
+        <h4>Google Maps API Authorization Required</h4>
+        <p>Google rejected the configured API key. This typically occurs when key restrictions (HTTP referrers) do not match your current host or when required APIs are not enabled.</p>
+        <div class="setup-guide">
+          1. Open <strong>Google Cloud Console &rarr; APIs &amp; Services &rarr; Credentials</strong>.<br>
+          2. Ensure these APIs are enabled: <strong>Maps JavaScript API</strong>, <strong>Places API</strong>, and <strong>Geocoding API</strong>.<br>
+          3. Under <em>Application Restrictions</em>, allow HTTP referrer:
+          <pre>${window.location.origin}/*</pre>
+        </div>
+      `;
+    } else {
+      banner.innerHTML = `
+        <div class="setup-icon">🗺️</div>
+        <h4>Google Maps Platform Configuration</h4>
+        <p>To enable genuine Google Satellite imagery, Google Roadmap view, Google Places search, and PostGIS field parcel mapping, configure your Google Maps API key.</p>
+        <div class="setup-guide">
+          1. Open Google Cloud Console and select or create a project.<br>
+          2. Enable <strong>Maps JavaScript API</strong>, <strong>Places API</strong>, and <strong>Geocoding API</strong>.<br>
+          3. Add your key to <code>.env</code> and restart the server:
+          <pre>GOOGLE_MAPS_API_KEY=AIzaSyYourKeyHere...</pre>
+          4. Refresh this page to activate the Google Maps Platform experience.
+        </div>
+      `;
+    }
+
+    elements.mapWrapper.appendChild(banner);
+  }
+
+  /**
+   * Initialize Google Map
+   */
+  async function initMap() {
     if (map) return;
 
-    // Default view: Central Agricultural Belt fallback (coordinates 20.5937, 78.9629 or Kansas 38.5, -98.0)
-    map = L.map('fieldMap', {
-      center: [20.5937, 78.9629],
-      zoom: 5,
-      zoomControl: false,
-      attributionControl: true
-    });
-
-    // Reposition zoom controls to top-right for mobile convenience
-    L.control.zoom({ position: 'topright' }).addTo(map);
-
-    // High-Resolution Satellite Layer (Esri World Imagery)
-    satelliteLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-      maxZoom: 19,
-      attribution: 'Tiles &copy; Esri, Maxar, Earthstar Geographics'
-    }).addTo(map);
-
-    // Hybrid Borders & Roads Overlay
-    labelsLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', {
-      maxZoom: 19,
-      opacity: 0.8
-    }).addTo(map);
-
-    // OpenStreetMap Street/Topo Fallback Layer
-    streetLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 19,
-      attribution: '&copy; OpenStreetMap contributors'
-    });
-
-    // Layer group for saved fields
-    if (!existingFieldsLayers) {
-      existingFieldsLayers = L.layerGroup();
-    }
-    existingFieldsLayers.addTo(map);
-
-    // Map click handler for drawing
-    map.on('click', handleMapClick);
-
-    // Invalidate size on container resize
-    setTimeout(() => {
-      map.invalidateSize();
-    }, 400);
-  }
-
-  /**
-   * Bind event listeners for UI buttons
-   */
-  function bindUIEvents() {
-    if (elements.startDrawBtn) {
-      elements.startDrawBtn.addEventListener('click', toggleDrawingState);
-    }
-    if (elements.undoPointBtn) {
-      elements.undoPointBtn.addEventListener('click', undoLastPoint);
-    }
-    if (elements.clearPolyBtn) {
-      elements.clearPolyBtn.addEventListener('click', resetDrawing);
-    }
-    if (elements.locateGpsBtn) {
-      elements.locateGpsBtn.addEventListener('click', handleExplicitGeolocation);
-    }
-    if (elements.basemapToggleBtn) {
-      elements.basemapToggleBtn.addEventListener('click', toggleBasemap);
-    }
-    if (elements.fullscreenBtn) {
-      elements.fullscreenBtn.addEventListener('click', toggleFullscreen);
-    }
-    if (elements.closeLocationCardBtn) {
-      elements.closeLocationCardBtn.addEventListener('click', () => {
-        if (elements.locationCard) elements.locationCard.style.display = 'none';
-      });
-    }
-    if (elements.btnImproveAccuracy) {
-      elements.btnImproveAccuracy.addEventListener('click', improveLocationAccuracy);
-    }
-    if (elements.manualJumpBtn) {
-      elements.manualJumpBtn.addEventListener('click', handleUniversalSearch);
-    }
-    if (elements.coordInput) {
-      elements.coordInput.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') {
-          e.preventDefault();
-          handleUniversalSearch();
-        }
-      });
-    }
-    if (elements.saveFieldForm) {
-      elements.saveFieldForm.addEventListener('submit', handleFieldFormSubmit);
-    }
-
-    // Handle ESC key or OS gestures exiting fullscreen
-    document.addEventListener('fullscreenchange', () => {
-      if (!document.fullscreenElement && elements.mapWrapper) {
-        elements.mapWrapper.classList.remove('map-fullscreen-active');
-        isFullscreen = false;
-        if (elements.fullscreenBtn) {
-          elements.fullscreenBtn.innerHTML = `
-            <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5v-4m0 4h-4m4 0l-5-5"/></svg>
-            Fullscreen
-          `;
-        }
-        if (map) map.invalidateSize();
-      }
-    });
-  }
-
-  /**
-   * Check Auth status and load registered fields if logged in
-   */
-  async function checkAuthState() {
-    if (window.AgriTrustSupabase && window.AgriTrustSupabase.ready) {
-      await window.AgriTrustSupabase.ready();
-    }
-
-    if (!window.AgriTrustSupabase || !window.AgriTrustSupabase.isReady()) {
-      showAuthGateNotice('Supabase is not configured yet. Configure local .env to enable remote parcel persistence.', 'warning');
+    const loaded = await loadGoogleMapsSDK();
+    if (!loaded || !window.google || !window.google.maps) {
       return;
     }
 
-    const user = await window.AgriTrustSupabase.getUser();
-    if (user) {
-      showAuthGateNotice(`Authenticated as ${user.email}. Saved field parcels will be associated with your farm ID.`, 'success');
-      loadRegisteredFields();
-    } else {
-      showAuthGateNotice('Drawing in preview mode. Sign In or Register to save your field boundaries into the cloud database.', 'info');
-      if (elements.registeredFieldsList) {
-        elements.registeredFieldsList.innerHTML = '<p style="color: var(--text-muted); font-size: 0.85rem;">Sign in to view your saved parcels.</p>';
-      }
-    }
-  }
+    // Remove any setup banner if successfully loaded
+    const banner = elements.mapWrapper?.querySelector('.google-maps-setup-banner');
+    if (banner) banner.remove();
 
-  function showAuthGateNotice(message, type = 'info') {
-    if (!elements.authGateNotice) return;
-    elements.authGateNotice.style.display = 'block';
-    if (type === 'success') {
-      elements.authGateNotice.style.backgroundColor = '#dcfce7';
-      elements.authGateNotice.style.borderColor = '#86efac';
-      elements.authGateNotice.style.color = '#166534';
-    } else if (type === 'warning') {
-      elements.authGateNotice.style.backgroundColor = '#fef3c7';
-      elements.authGateNotice.style.borderColor = '#fcd34d';
-      elements.authGateNotice.style.color = '#92400e';
-    } else {
-      elements.authGateNotice.style.backgroundColor = '#f1f5f9';
-      elements.authGateNotice.style.borderColor = '#cbd5e1';
-      elements.authGateNotice.style.color = '#334155';
-    }
-    elements.authGateNotice.innerHTML = message;
+    // Instantiate Google Services
+    geocoder = new google.maps.Geocoder();
+    directionsService = new google.maps.DirectionsService();
+    directionsRenderer = new google.maps.DirectionsRenderer({
+      suppressMarkers: false,
+      polylineOptions: {
+        strokeColor: '#2563eb',
+        strokeWeight: 5,
+        strokeOpacity: 0.85
+      }
+    });
+
+    // Default view: neutral global overview (lat: 20, lng: 0, zoom: 2)
+    // No hardcoded regional bias; will dynamically center on saved fields or device GPS
+    map = new google.maps.Map(elements.mapContainer, {
+      center: { lat: 20.0, lng: 0.0 },
+      zoom: 2,
+      mapTypeId: google.maps.MapTypeId.HYBRID, // Default to Google Satellite with Roads & Labels
+      mapTypeControl: false,                   // Controlled via custom sleek toolbar
+      zoomControl: true,
+      zoomControlOptions: {
+        position: google.maps.ControlPosition.RIGHT_BOTTOM
+      },
+      streetViewControl: false,
+      fullscreenControl: false,                // Controlled via custom fullscreen handler
+      gestureHandling: 'greedy'                // Touch-friendly on mobile
+    });
+
+    directionsRenderer.setMap(map);
+
+    // Map click handler for polygon drawing
+    map.addListener('click', (e) => {
+      handleMapClick(e.latLng);
+    });
+
+    // If user drags the map manually during live tracking, pause auto-centering
+    map.addListener('dragstart', () => {
+      if (isTracking) {
+        autoCenterOnGps = false;
+        if (elements.locTrackingStatus) {
+          elements.locTrackingStatus.innerHTML = '<span class="live-dot" style="background:#f59e0b;"></span> TRACKING (MANUAL PAN)';
+        }
+      }
+    });
+
+    // Initialize Google Places Autocomplete
+    initGooglePlacesAutocomplete();
+
+    // Check auth and load saved fields
+    checkAuthState();
   }
 
   /**
-   * Basemap Switcher (Satellite vs Street)
+   * Google Places Global Autocomplete Search
+   */
+  function initGooglePlacesAutocomplete() {
+    if (!elements.coordInput || !window.google?.maps?.places) return;
+
+    placesAutocomplete = new google.maps.places.Autocomplete(elements.coordInput, {
+      fields: ['geometry', 'name', 'formatted_address', 'address_components']
+    });
+
+    // Bind autocomplete to map bounds
+    placesAutocomplete.bindTo('bounds', map);
+
+    placesAutocomplete.addListener('place_changed', () => {
+      const place = placesAutocomplete.getPlace();
+
+      if (!place || !place.geometry || !place.geometry.location) {
+        // Fallback: check if the user entered direct latitude & longitude coordinates
+        handleDirectCoordinateSearch();
+        return;
+      }
+
+      if (elements.clearSearchBtn) {
+        elements.clearSearchBtn.style.display = 'block';
+      }
+
+      // Smoothly fly and fit bounds
+      if (place.geometry.viewport) {
+        map.fitBounds(place.geometry.viewport);
+      } else {
+        map.setCenter(place.geometry.location);
+        map.setZoom(16);
+      }
+
+      const lat = place.geometry.location.lat();
+      const lng = place.geometry.location.lng();
+      const placeName = place.name || place.formatted_address || 'Search Target';
+
+      setSearchTargetMarker(place.geometry.location, placeName, place.formatted_address);
+
+      // Extract Google address components
+      const details = parseGoogleAddressComponents(place.address_components, place.formatted_address);
+      updateLocationDisplay(lat, lng, 0, details);
+
+      if (elements.locAccuracy) elements.locAccuracy.textContent = 'Google Places Match';
+      if (elements.locAccuracyTier) {
+        elements.locAccuracyTier.textContent = 'VERIFIED';
+        elements.locAccuracyTier.className = 'accuracy-tier-pill tier-high';
+      }
+      if (elements.locSource) elements.locSource.textContent = 'Google Places Platform';
+      if (elements.locAccuracyWarning) elements.locAccuracyWarning.style.display = 'none';
+
+      showValidationMessage(`Focused on ${placeName}. Ready to outline field boundaries or get directions.`, 'success');
+    });
+
+    // Clear search button binding
+    if (elements.clearSearchBtn) {
+      elements.clearSearchBtn.addEventListener('click', () => {
+        elements.coordInput.value = '';
+        elements.clearSearchBtn.style.display = 'none';
+        if (activeSearchMarker) {
+          activeSearchMarker.setMap(null);
+          activeSearchMarker = null;
+        }
+        if (activeSearchInfoWindow) {
+          activeSearchInfoWindow.close();
+          activeSearchInfoWindow = null;
+        }
+      });
+    }
+
+    // Input keydown handler for Enter or input changes
+    elements.coordInput.addEventListener('input', (e) => {
+      if (elements.clearSearchBtn) {
+        elements.clearSearchBtn.style.display = e.target.value.length > 0 ? 'block' : 'none';
+      }
+    });
+
+    elements.coordInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        // If Places dropdown didn't fire place_changed, execute universal search
+        setTimeout(() => {
+          handleDirectCoordinateSearch();
+        }, 200);
+      }
+    });
+
+    // Multilingual language switch buttons
+    if (elements.langButtons) {
+      elements.langButtons.forEach(btn => {
+        btn.addEventListener('click', () => {
+          setLanguage(btn.dataset.lang);
+        });
+      });
+    }
+  }
+
+  /**
+   * Sets prominent search target marker with info window
+   */
+  function setSearchTargetMarker(latLng, title, formattedAddress) {
+    if (activeSearchMarker) {
+      activeSearchMarker.setMap(null);
+    }
+    if (activeSearchInfoWindow) {
+      activeSearchInfoWindow.close();
+    }
+
+    activeSearchMarker = new google.maps.Marker({
+      map,
+      position: latLng,
+      title: title,
+      animation: google.maps.Animation.DROP,
+      icon: {
+        path: google.maps.SymbolPath.BACKWARD_CLOSED_ARROW,
+        scale: 6,
+        fillColor: '#ea580c',
+        fillOpacity: 1,
+        strokeColor: '#ffffff',
+        strokeWeight: 2
+      }
+    });
+
+    activeSearchInfoWindow = new google.maps.InfoWindow({
+      content: `
+        <div style="font-family: inherit; font-size: 0.85rem; line-height: 1.4; max-width: 240px;">
+          <strong style="color: #ea580c; font-size: 0.95rem;">📍 ${escapeHTML(title)}</strong><br>
+          ${formattedAddress ? `<span style="font-size: 0.75rem; color: #475569;">${escapeHTML(formattedAddress)}</span><br>` : ''}
+          <small style="color: #64748b; margin-top: 4px; display: inline-block;">Google Places Verified Location</small>
+        </div>
+      `
+    });
+
+    activeSearchMarker.addListener('click', () => {
+      activeSearchInfoWindow.open(map, activeSearchMarker);
+    });
+
+    activeSearchInfoWindow.open(map, activeSearchMarker);
+  }
+
+  /**
+   * Helper to parse Google address components into our clean hierarchy
+   */
+  function parseGoogleAddressComponents(components, formattedAddress = '') {
+    const details = {
+      primaryPlace: null,
+      subPlace: null,
+      district: null,
+      region: null,
+      state: null,
+      country: null,
+      postcode: null,
+      displayName: formattedAddress
+    };
+
+    if (!Array.isArray(components)) return details;
+
+    let locality = null;
+    let sublocality = null;
+    let neighborhood = null;
+    let admin2 = null; // District / County
+    let admin3 = null; // Tehsil / Taluk / Mandal
+    let admin1 = null; // State / Province
+    let country = null;
+    let postal = null;
+
+    components.forEach(c => {
+      const types = c.types || [];
+      if (types.includes('locality')) locality = c.long_name;
+      else if (types.includes('sublocality_level_1') || types.includes('sublocality')) sublocality = c.long_name;
+      else if (types.includes('neighborhood')) neighborhood = c.long_name;
+      else if (types.includes('administrative_area_level_3')) admin3 = c.long_name;
+      else if (types.includes('administrative_area_level_2')) admin2 = c.long_name;
+      else if (types.includes('administrative_area_level_1')) admin1 = c.long_name;
+      else if (types.includes('country')) country = c.long_name;
+      else if (types.includes('postal_code')) postal = c.long_name;
+    });
+
+    details.primaryPlace = sublocality || neighborhood || locality || admin2 || 'Location';
+    details.subPlace = admin3 || (sublocality && locality ? locality : null);
+    details.district = admin2 || null;
+    details.state = admin1 || null;
+    details.country = country || null;
+    details.postcode = postal || null;
+    details.region = [admin1, country].filter(Boolean).join(', ') || null;
+
+    return details;
+  }
+
+  /**
+   * Parses direct latitude, longitude coordinate entries
+   */
+  function parseCoordinates(str) {
+    if (!str || typeof str !== 'string') return null;
+    const clean = str.trim();
+    const match = clean.match(/^([-+]?\d{1,2}(?:\.\d+)?)[,\s]+([-+]?\d{1,3}(?:\.\d+)?)$/);
+    if (match) {
+      const lat = parseFloat(match[1]);
+      const lng = parseFloat(match[2]);
+      if (!isNaN(lat) && !isNaN(lng) && lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180) {
+        return { lat, lng };
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Direct Coordinate or Universal Search
+   */
+  async function handleDirectCoordinateSearch() {
+    const raw = elements.coordInput?.value.trim();
+    if (!raw) return;
+
+    const coords = parseCoordinates(raw);
+    if (coords) {
+      if (map && window.google?.maps) {
+        const latLng = new google.maps.LatLng(coords.lat, coords.lng);
+        map.setCenter(latLng);
+        map.setZoom(17);
+        setSearchTargetMarker(latLng, `${coords.lat.toFixed(6)}, ${coords.lng.toFixed(6)}`, 'Direct Coordinates');
+      }
+
+      const details = await resolveGoogleReverseGeocode(coords.lat, coords.lng);
+      updateLocationDisplay(coords.lat, coords.lng, 0, details);
+
+      if (elements.locAccuracy) elements.locAccuracy.textContent = 'Coordinate Target';
+      if (elements.locAccuracyTier) {
+        elements.locAccuracyTier.textContent = 'TARGET';
+        elements.locAccuracyTier.className = 'accuracy-tier-pill tier-high';
+      }
+      if (elements.locSource) elements.locSource.textContent = 'Direct Coordinates';
+
+      showValidationMessage(`Focused on coordinates (${coords.lat.toFixed(6)}, ${coords.lng.toFixed(6)}). Outline boundaries when ready.`, 'success');
+    }
+  }
+
+  /**
+   * Google Reverse Geocoding via Geocoder
+   */
+  async function resolveGoogleReverseGeocode(lat, lng) {
+    if (!geocoder) {
+      if (window.google?.maps?.Geocoder) {
+        geocoder = new google.maps.Geocoder();
+      } else {
+        return {
+          primaryPlace: `${lat.toFixed(5)}, ${lng.toFixed(5)}`,
+          subPlace: null,
+          district: null,
+          region: null,
+          country: null,
+          displayName: `Point (${lat.toFixed(5)}, ${lng.toFixed(5)})`
+        };
+      }
+    }
+
+    return new Promise((resolve) => {
+      geocoder.geocode({ location: { lat, lng } }, (results, status) => {
+        if (status === 'OK' && results && results[0]) {
+          const res = results[0];
+          const details = parseGoogleAddressComponents(res.address_components, res.formatted_address);
+          resolve(details);
+        } else {
+          resolve({
+            primaryPlace: `${lat.toFixed(5)}, ${lng.toFixed(5)}`,
+            subPlace: null,
+            district: null,
+            region: null,
+            country: null,
+            displayName: `Point (${lat.toFixed(5)}, ${lng.toFixed(5)})`
+          });
+        }
+      });
+    });
+  }
+
+  /**
+   * Toggle Basemap: Google Hybrid (Satellite + Labels) <-> Google Roadmap
    */
   function toggleBasemap() {
-    if (activeBasemap === 'satellite') {
-      map.removeLayer(satelliteLayer);
-      map.removeLayer(labelsLayer);
-      map.addLayer(streetLayer);
-      activeBasemap = 'street';
+    if (activeMapTypeId === 'hybrid') {
+      activeMapTypeId = 'roadmap';
+      if (map && window.google?.maps) {
+        map.setMapTypeId(google.maps.MapTypeId.ROADMAP);
+      }
       if (elements.basemapToggleBtn) {
         elements.basemapToggleBtn.innerHTML = `
           <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064"/></svg>
@@ -289,10 +594,10 @@ const AgriTrustFieldManager = (() => {
         `;
       }
     } else {
-      map.removeLayer(streetLayer);
-      map.addLayer(satelliteLayer);
-      map.addLayer(labelsLayer);
-      activeBasemap = 'satellite';
+      activeMapTypeId = 'hybrid';
+      if (map && window.google?.maps) {
+        map.setMapTypeId(google.maps.MapTypeId.HYBRID);
+      }
       if (elements.basemapToggleBtn) {
         elements.basemapToggleBtn.innerHTML = `
           <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"/></svg>
@@ -303,313 +608,166 @@ const AgriTrustFieldManager = (() => {
   }
 
   /**
-   * Fullscreen Mode Toggle for expansive satellite drawing
+   * Device Geolocation & Continuous Tracking Engine
    */
-  function toggleFullscreen() {
-    if (!elements.mapWrapper) return;
-
-    if (!isFullscreen) {
-      elements.mapWrapper.classList.add('map-fullscreen-active');
-      if (elements.mapWrapper.requestFullscreen) {
-        elements.mapWrapper.requestFullscreen().catch(() => {});
-      }
-      isFullscreen = true;
-      if (elements.fullscreenBtn) {
-        elements.fullscreenBtn.innerHTML = `
-          <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
-          Exit Fullscreen
-        `;
-      }
-    } else {
-      if (document.exitFullscreen && document.fullscreenElement) {
-        document.exitFullscreen().catch(() => {});
-      }
-      elements.mapWrapper.classList.remove('map-fullscreen-active');
-      isFullscreen = false;
-      if (elements.fullscreenBtn) {
-        elements.fullscreenBtn.innerHTML = `
-          <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5v-4m0 4h-4m4 0l-5-5"/></svg>
-          Fullscreen
-        `;
-      }
+  function handleExplicitGeolocation() {
+    if (!navigator.geolocation) {
+      showValidationMessage('Device geolocation is not supported by your browser or operating system.', 'warning');
+      return;
     }
 
-    setTimeout(() => {
-      if (map) map.invalidateSize();
-    }, 200);
-  }
-
-  /**
-   * Detects whether the current device is a mobile device with hardware sensors
-   */
-  function isMobileDevice() {
-    if (typeof navigator !== 'undefined') {
-      if (navigator.userAgentData && typeof navigator.userAgentData.mobile === 'boolean') {
-        return navigator.userAgentData.mobile;
-      }
-      if (navigator.userAgent) {
-        return /Android|iPhone|iPad|iPod|Mobile|webOS|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-      }
-    }
-    return false;
-  }
-
-  /**
-   * Classifies location accuracy into discrete standardized tiers:
-   * - HIGH ACCURACY: <= 20m (True satellite GNSS lock)
-   * - MODERATE ACCURACY: 21 - 50m (Good Wi-Fi or assisted GPS)
-   * - LOW ACCURACY: > 50m (Cellular or ISP network positioning)
-   */
-  function classifyAccuracyTier(accuracy) {
-    if (typeof accuracy !== 'number' || isNaN(accuracy) || accuracy <= 0) {
-      return { tier: 'target', label: 'TARGET', colorClass: 'tier-moderate' };
-    }
-    if (accuracy <= 20) {
-      return { tier: 'high', label: 'HIGH ACCURACY', colorClass: 'tier-high' };
-    }
-    if (accuracy <= 50) {
-      return { tier: 'moderate', label: 'MODERATE ACCURACY', colorClass: 'tier-moderate' };
-    }
-    return { tier: 'low', label: 'LOW ACCURACY', colorClass: 'tier-low' };
-  }
-
-  /**
-   * Classifies the actual physical location source without false claims.
-   * Laptops without GNSS chips are never labeled as GPS.
-   */
-  function classifyLocationSource(accuracy, coords) {
-    if (externalGnssProvider) {
-      return 'External GNSS Receiver (RTK / Bluetooth / USB)';
+    if (elements.locateGpsBtn) {
+      elements.locateGpsBtn.disabled = true;
+      elements.locateGpsBtn.innerHTML = `
+        <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" stroke-width="2" stroke-dasharray="32" stroke-dashoffset="16"/></svg>
+        Acquiring GPS Fix...
+      `;
     }
 
-    const isMobile = isMobileDevice();
+    showValidationMessage('Acquiring high-accuracy device location from hardware sensors...', 'info');
 
-    if (isMobile) {
-      if (accuracy <= 20) {
-        return 'Device GPS / Satellite GNSS (Hardware Receiver)';
-      }
-      if (accuracy <= 50) {
-        return 'Device GPS / Wi-Fi Assisted Positioning';
-      }
-      return 'Cellular / Network Positioning (Coarse Triangulation)';
-    } else {
-      // Laptop / Desktop environment - typically no satellite hardware
-      if (accuracy <= 50) {
-        return 'Wi-Fi Access Point Triangulation (802.11 BSSID)';
-      }
-      return 'Cellular / ISP Network Positioning (Coarse Network Lookup)';
-    }
-  }
+    autoCenterOnGps = true;
 
-  /**
-   * Computes great-circle distance between two points on WGS84 sphere in meters
-   */
-  function getDistanceFromLatLonInM(lat1, lon1, lat2, lon2) {
-    const R = 6371000;
-    const dLat = (lat2 - lat1) * Math.PI / 180;
-    const dLon = (lon2 - lon1) * Math.PI / 180;
-    const a =
-      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
-      Math.sin(dLon / 2) * Math.sin(dLon / 2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    return R * c;
-  }
-
-  /**
-   * Real Reverse Geocoding Service (Multi-Tier)
-   * Resolves Village/Locality, Mandal/Sub-district, District, State, Country from real coordinates.
-   * Strictly avoids mock, fake, or invented data.
-   */
-  async function resolveGeographicLocation(lat, lng) {
-    let details = {
-      primaryPlace: null,
-      subPlace: null,
-      district: null,
-      region: null,
-      state: null,
-      country: null,
-      postcode: null,
-      displayName: null,
-      source: null
-    };
-
-    // Tier 1: OpenStreetMap Nominatim
-    try {
-      const nomUrl = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`;
-      const res = await fetch(nomUrl, {
-        headers: { 'Accept': 'application/json' }
-      });
-      if (res.ok) {
-        const data = await res.json();
-        if (data && data.address) {
-          const a = data.address;
-          const village = a.village || a.hamlet || a.town || a.city_district || a.suburb || a.neighbourhood || a.city;
-          const mandal = a.subdistrict || a.tehsil || a.taluk || a.county || a.mandal;
-          const district = a.state_district || a.district;
-          const state = a.state;
-          const country = a.country || 'India';
-
-          details.primaryPlace = village || (mandal ? `${mandal} Area` : (district ? `${district} Region` : null));
-          details.subPlace = mandal || null;
-          details.district = district || null;
-          details.region = [state, country].filter(Boolean).join(', ') || null;
-          details.state = state || null;
-          details.country = country;
-          details.postcode = a.postcode || null;
-          details.displayName = data.display_name || null;
-          details.source = 'OpenStreetMap';
-          return details;
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        if (elements.locateGpsBtn) {
+          elements.locateGpsBtn.disabled = false;
+          elements.locateGpsBtn.innerHTML = `
+            <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3" stroke-width="2"/><circle cx="12" cy="12" r="8" stroke-width="2"/></svg>
+            Locate My Field (GPS)
+          `;
         }
-      }
-    } catch (err) {
-      console.warn('[AgriTrustFieldManager] Nominatim reverse geocode error:', err);
-    }
 
-    // Tier 2: BigDataCloud Client Reverse Geocode Fallback
-    try {
-      const bdcUrl = `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lng}&localityLanguage=en`;
-      const res = await fetch(bdcUrl);
-      if (res.ok) {
-        const data = await res.json();
-        if (data) {
-          const adminList = (data.localityInfo?.administrative || []).map(x => x.name);
-          const village = data.locality || data.city || null;
-          let mandal = null;
-          let district = null;
-          for (const item of adminList) {
-            if (/mandal|tehsil|taluk/i.test(item) && !mandal) mandal = item;
-            if (/district/i.test(item) && !district) district = item;
-          }
-          const state = data.principalSubdivision || null;
-          const country = data.countryName || 'India';
+        const lat = pos.coords.latitude;
+        const lng = pos.coords.longitude;
+        const accuracy = Math.round(pos.coords.accuracy);
 
-          details.primaryPlace = village || (mandal ? `${mandal} Area` : (district ? `${district} Area` : null));
-          details.subPlace = mandal || null;
-          details.district = district || null;
-          details.region = [state, country].filter(Boolean).join(', ') || null;
-          details.state = state || null;
-          details.country = country;
-          details.postcode = data.postcode || null;
-          details.source = 'BigDataCloud';
-          return details;
+        await applyGpsReading(lat, lng, accuracy, pos.timestamp, pos.coords, true);
+
+        if (accuracy > 50) {
+          showValidationMessage(`Location detected (&plusmn;${accuracy}m accuracy). Laptops or cellular devices without satellite lock report approximate network positioning. Step outdoors or click "Improve Location Accuracy" to refine.`, 'warning');
+        } else {
+          showValidationMessage(`High-precision GPS fix acquired (&plusmn;${accuracy}m). Center placed over field. Ready to outline boundary or record GPS corners.`, 'success');
         }
-      }
-    } catch (err) {
-      console.warn('[AgriTrustFieldManager] BigDataCloud fallback reverse geocode error:', err);
-    }
 
-    return details;
+        // Enable GPS corner capture button if drawing
+        if (drawState === 'DRAWING' && elements.captureGpsCornerBtn) {
+          elements.captureGpsCornerBtn.disabled = false;
+        }
+      },
+      (err) => {
+        if (elements.locateGpsBtn) {
+          elements.locateGpsBtn.disabled = false;
+          elements.locateGpsBtn.innerHTML = `
+            <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3" stroke-width="2"/><circle cx="12" cy="12" r="8" stroke-width="2"/></svg>
+            Locate My Field (GPS)
+          `;
+        }
+
+        let errMsg = 'Location access failed.';
+        if (err.code === 1) {
+          errMsg = 'Location permission was denied in your browser settings. To enable: click the permissions/lock icon next to your address bar, allow Location access, and click "Locate My Field" again. You can also search for your village in the search bar below.';
+        } else if (err.code === 2) {
+          errMsg = 'GPS position is unavailable from your device sensors. Please ensure Location Services are turned on in your device settings, or search for your village name in the search bar below.';
+        } else if (err.code === 3) {
+          errMsg = 'GPS acquisition timed out. Please step outdoors for clear satellite line-of-sight or search for your location in the search bar below.';
+        }
+
+        showValidationMessage(errMsg, 'warning');
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 20000,
+        maximumAge: 0
+      }
+    );
   }
 
   /**
-   * Render resolved geographic details into the dedicated Location Information Card
+   * Continuous Tracking Toggle
    */
-  function updateLocationDisplay(lat, lng, accuracy, details, coords = null) {
-    if (!elements.locationCard) return;
-
-    elements.locationCard.style.display = 'block';
-
-    const primaryText = details?.primaryPlace || (details?.subPlace ? `${details.subPlace} Area` : (details?.district ? `${details.district} Area` : 'Unmapped Agricultural Area'));
-    const subText = details?.subPlace || (details?.district ? '' : 'Sub-district / Mandal');
-    const districtText = details?.district || '';
-    const regionText = details?.region || 'State, Country';
-
-    if (elements.locPrimaryPlace) elements.locPrimaryPlace.textContent = primaryText;
-    if (elements.locSubPlace) {
-      if (details?.subPlace) {
-        elements.locSubPlace.textContent = details.subPlace;
-        elements.locSubPlace.style.display = 'block';
-      } else {
-        elements.locSubPlace.style.display = 'none';
-      }
-    }
-    if (elements.locDistrict) {
-      if (details?.district) {
-        elements.locDistrict.textContent = details.district;
-        elements.locDistrict.style.display = 'block';
-      } else {
-        elements.locDistrict.style.display = 'none';
-      }
-    }
-    if (elements.locRegion) elements.locRegion.textContent = regionText;
-    if (elements.locCoords) elements.locCoords.textContent = `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
-
-    // Accuracy badge and tier pill
-    const tierInfo = classifyAccuracyTier(accuracy);
-    if (elements.locAccuracy) {
-      if (accuracy > 0) {
-        elements.locAccuracy.textContent = `±${accuracy} m`;
-      } else {
-        elements.locAccuracy.textContent = 'Target Point';
-      }
-    }
-
-    if (elements.locAccuracyTier) {
-      elements.locAccuracyTier.textContent = tierInfo.label;
-      elements.locAccuracyTier.className = `accuracy-tier-pill ${tierInfo.colorClass}`;
-    }
-
-    // Location Source
-    const sourceLabel = classifyLocationSource(accuracy, coords);
-    if (elements.locSource) {
-      elements.locSource.textContent = sourceLabel;
-    }
-
-    // Extended GNSS Telemetry (Altitude, Speed, Heading)
-    if (coords && (
-      (coords.altitude !== null && coords.altitude !== undefined) ||
-      (coords.speed !== null && coords.speed !== undefined) ||
-      (coords.heading !== null && coords.heading !== undefined)
-    )) {
-      if (elements.locGnssTelemetry) elements.locGnssTelemetry.style.display = 'flex';
-      if (elements.locAltitude) {
-        elements.locAltitude.innerHTML = (coords.altitude !== null && coords.altitude !== undefined)
-          ? `<small>ALT:</small> ${coords.altitude.toFixed(1)}m`
-          : `<small>ALT:</small> --`;
-      }
-      if (elements.locSpeed) {
-        elements.locSpeed.innerHTML = (coords.speed !== null && coords.speed !== undefined)
-          ? `<small>SPD:</small> ${(coords.speed * 3.6).toFixed(1)} km/h`
-          : `<small>SPD:</small> --`;
-      }
-      if (elements.locHeading) {
-        elements.locHeading.innerHTML = (coords.heading !== null && coords.heading !== undefined)
-          ? `<small>HDG:</small> ${coords.heading.toFixed(0)}°`
-          : `<small>HDG:</small> --`;
-      }
+  function toggleTracking() {
+    if (isTracking) {
+      stopTracking();
+      showValidationMessage('Continuous GPS tracking stopped.', 'info');
     } else {
-      if (elements.locGnssTelemetry) elements.locGnssTelemetry.style.display = 'none';
+      startTracking();
+    }
+  }
+
+  function startTracking() {
+    if (!navigator.geolocation) {
+      showValidationMessage('Geolocation is not supported by your browser.', 'warning');
+      return;
     }
 
-    // Low Accuracy Advisory Warning
-    if (elements.locAccuracyWarning) {
-      if (accuracy > 50) {
-        elements.locAccuracyWarning.style.display = 'block';
-        if (elements.locAccuracyWarningText) {
-          if (isMobileDevice()) {
-            elements.locAccuracyWarningText.innerHTML = `
-              Location accuracy is currently low (&plusmn;${accuracy}m) due to cellular network triangulation.
-              For high satellite precision (&le;15m), step outdoors with clear sky view, verify GPS is enabled, and tap <strong>"Improve Location Accuracy"</strong>.
-            `;
-          } else {
-            elements.locAccuracyWarningText.innerHTML = `
-              Location accuracy is currently low (&plusmn;${accuracy}m). Laptops typically lack internal satellite GPS receivers and rely on Wi-Fi or coarse ISP network positioning.
-              For high-precision field boundaries, open AgriTrust on your smartphone or use manual map navigation.
-            `;
-          }
+    if (watchId !== null) {
+      navigator.geolocation.clearWatch(watchId);
+    }
+
+    isTracking = true;
+    autoCenterOnGps = true;
+
+    if (elements.toggleTrackingBtn) {
+      elements.toggleTrackingBtn.classList.add('active');
+    }
+    if (elements.trackingBtnLabel) {
+      elements.trackingBtnLabel.textContent = 'Stop Tracking';
+    }
+    if (elements.locTrackingStatus) {
+      elements.locTrackingStatus.style.display = 'inline-flex';
+      elements.locTrackingStatus.innerHTML = '<span class="live-dot"></span> LIVE TRACKING';
+    }
+
+    showValidationMessage('Continuous GPS tracking active. The map will follow your position as you move around your farm.', 'info');
+
+    watchId = navigator.geolocation.watchPosition(
+      async (pos) => {
+        const lat = pos.coords.latitude;
+        const lng = pos.coords.longitude;
+        const accuracy = Math.round(pos.coords.accuracy);
+
+        await applyGpsReading(lat, lng, accuracy, pos.timestamp, pos.coords, autoCenterOnGps);
+
+        // Enable capture GPS button if drawing
+        if (drawState === 'DRAWING' && elements.captureGpsCornerBtn) {
+          elements.captureGpsCornerBtn.disabled = false;
         }
-      } else {
-        elements.locAccuracyWarning.style.display = 'none';
+      },
+      (err) => {
+        console.warn('[AgriTrustFieldManager] Tracking error:', err);
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 20000,
+        maximumAge: 0
       }
+    );
+  }
+
+  function stopTracking() {
+    if (watchId !== null) {
+      navigator.geolocation.clearWatch(watchId);
+      watchId = null;
+    }
+    isTracking = false;
+    autoCenterOnGps = false;
+
+    if (elements.toggleTrackingBtn) {
+      elements.toggleTrackingBtn.classList.remove('active');
+    }
+    if (elements.trackingBtnLabel) {
+      elements.trackingBtnLabel.textContent = 'Start Tracking';
+    }
+    if (elements.locTrackingStatus) {
+      elements.locTrackingStatus.style.display = 'none';
     }
   }
 
   /**
-   * Applies a new GPS/sensor reading to map layers, state, and UI.
-   * Completely decoupled from field boundary polygon creation.
+   * Apply GPS reading to map, marker, accuracy circle and telemetry card
    */
-  async function applyGpsReading(lat, lng, accuracy, timestamp, coords = null, shouldFlyTo = false) {
+  async function applyGpsReading(lat, lng, accuracy, timestamp, coords = null, shouldPan = false) {
     const tier = classifyAccuracyTier(accuracy);
     const source = classifyLocationSource(accuracy, coords);
 
@@ -630,175 +788,119 @@ const AgriTrustFieldManager = (() => {
       bestPosition = currentGpsPosition;
     }
 
-    // Update or add accuracy radius circle
-    if (currentAccuracyCircle && map.hasLayer(currentAccuracyCircle)) {
-      currentAccuracyCircle.setLatLng([lat, lng]);
-      currentAccuracyCircle.setRadius(accuracy);
-    } else {
-      currentAccuracyCircle = L.circle([lat, lng], {
-        radius: accuracy,
-        color: '#1a73e8',
-        weight: 1.5,
-        opacity: 0.6,
-        fillColor: '#1a73e8',
-        fillOpacity: 0.12
-      }).addTo(map);
+    if (map && window.google?.maps) {
+      const latLng = new google.maps.LatLng(lat, lng);
+
+      // Update or create Google Maps blue location dot marker
+      if (currentGpsMarker) {
+        currentGpsMarker.setPosition(latLng);
+      } else {
+        currentGpsMarker = new google.maps.Marker({
+          map,
+          position: latLng,
+          title: 'Your Current Device Position',
+          zIndex: 999,
+          icon: {
+            path: google.maps.SymbolPath.CIRCLE,
+            scale: 9,
+            fillColor: '#1a73e8',
+            fillOpacity: 1,
+            strokeColor: '#ffffff',
+            strokeWeight: 3
+          }
+        });
+
+        currentGpsMarker.addListener('click', () => {
+          const pTitle = currentGpsPosition.address?.primaryPlace || 'Device Position';
+          const pSub = [currentGpsPosition.address?.subPlace, currentGpsPosition.address?.district].filter(Boolean).join(' • ');
+          const info = new google.maps.InfoWindow({
+            content: `
+              <div style="font-family: inherit; font-size: 0.8125rem; min-width: 200px; line-height: 1.4;">
+                <strong style="color: #1a73e8; font-size: 0.9rem;">📍 ${escapeHTML(pTitle)}</strong><br>
+                ${pSub ? `<span style="font-size: 0.75rem; color: #475569;">${escapeHTML(pSub)}</span><br>` : ''}
+                <div style="margin-top: 0.35rem; font-size: 0.75rem; border-top: 1px solid #e2e8f0; padding-top: 0.25rem;">
+                  <strong>Coordinates:</strong> ${lat.toFixed(6)}, ${lng.toFixed(6)}<br>
+                  <strong>Accuracy:</strong> &plusmn;${accuracy}m (${tier.label})<br>
+                  <strong>Source:</strong> ${escapeHTML(source)}
+                </div>
+              </div>
+            `
+          });
+          info.open(map, currentGpsMarker);
+        });
+      }
+
+      // Update or create Google Maps accuracy circle
+      if (currentAccuracyCircle) {
+        currentAccuracyCircle.setCenter(latLng);
+        currentAccuracyCircle.setRadius(accuracy);
+      } else {
+        currentAccuracyCircle = new google.maps.Circle({
+          map,
+          center: latLng,
+          radius: accuracy,
+          fillColor: '#1a73e8',
+          fillOpacity: 0.14,
+          strokeColor: '#1a73e8',
+          strokeOpacity: 0.5,
+          strokeWeight: 1.5,
+          clickable: false
+        });
+      }
+
+      if (shouldPan) {
+        map.panTo(latLng);
+        if (map.getZoom() < 16) {
+          map.setZoom(accuracy > 50 ? 16 : 17);
+        }
+      }
     }
 
-    // Update or add Google Maps-style blue location dot with radar pulse
-    if (currentGpsMarker && map.hasLayer(currentGpsMarker)) {
-      currentGpsMarker.setLatLng([lat, lng]);
-    } else {
-      const gpsIcon = L.divIcon({
-        className: 'gps-location-container',
-        html: '<div class="gps-pulse-ring"></div><div class="gps-blue-dot"></div>',
-        iconSize: [24, 24],
-        iconAnchor: [12, 12]
-      });
-
-      currentGpsMarker = L.marker([lat, lng], {
-        icon: gpsIcon,
-        zIndexOffset: 1000
-      }).addTo(map);
-    }
-
-    if (shouldFlyTo) {
-      const targetZoom = accuracy > 100 ? 15 : (accuracy > 30 ? 16 : 17);
-      map.flyTo([lat, lng], targetZoom, { duration: 1.5 });
-    }
-
-    // Reverse geocode if not yet resolved or if moved >50m from last geocoded position
-    let details = currentGpsPosition.address;
-    const needsGeocode = !details || (
+    // Reverse geocode if moved > 50m
+    const needsGeocode = !currentGpsPosition.address || (
       currentGpsPosition.lastGeocodedLat &&
       getDistanceFromLatLonInM(lat, lng, currentGpsPosition.lastGeocodedLat, currentGpsPosition.lastGeocodedLng) > 50
     );
 
     if (needsGeocode) {
-      details = await resolveGeographicLocation(lat, lng);
+      const details = await resolveGoogleReverseGeocode(lat, lng);
       currentGpsPosition.address = details;
       currentGpsPosition.lastGeocodedLat = lat;
       currentGpsPosition.lastGeocodedLng = lng;
     }
 
-    updateLocationDisplay(lat, lng, accuracy, details, coords);
-
-    // Update marker popup with full hierarchy, tier, and source
-    const placeTitle = details?.primaryPlace || 'Device Position';
-    const placeSub = [details?.subPlace, details?.district, details?.region].filter(Boolean).join(' • ');
-
-    currentGpsMarker.bindPopup(`
-      <div style="font-family: inherit; font-size: 0.8125rem; min-width: 220px; line-height: 1.4;">
-        <strong style="color: #1a73e8; font-size: 0.9rem;">📍 ${escapeHTML(placeTitle)}</strong><br>
-        ${placeSub ? `<span style="font-size: 0.75rem; color: #475569;">${escapeHTML(placeSub)}</span><br>` : ''}
-        <div style="margin-top: 0.35rem; font-size: 0.75rem; border-top: 1px solid #e2e8f0; padding-top: 0.25rem;">
-          <strong>Coordinates:</strong> ${lat.toFixed(6)}, ${lng.toFixed(6)}<br>
-          <strong>Accuracy:</strong> <span style="font-weight: 700;" class="${tier.colorClass}">&plusmn;${accuracy}m (${tier.label})</span><br>
-          <strong>Source:</strong> <span style="color: #475569;">${escapeHTML(source)}</span>
-          ${coords && coords.altitude !== null && coords.altitude !== undefined ? `<br><strong>Altitude:</strong> ${coords.altitude.toFixed(1)}m` : ''}
-        </div>
-        ${accuracy > 50 ? '<div style="color: #b91c1c; font-size: 0.7rem; margin-top: 0.25rem;">⚠️ Approximate fix. Move outdoors or zoom in to plot boundary.</div>' : ''}
-      </div>
-    `);
-
+    updateLocationDisplay(lat, lng, accuracy, currentGpsPosition.address, coords);
     return currentGpsPosition;
   }
 
   /**
-   * High-Accuracy Device Geolocation with Continuous Watch Tracking
+   * "Capture GPS Corner" Feature for In-Field Boundary Surveying
    */
-  function handleExplicitGeolocation() {
-    if (!navigator.geolocation) {
-      showValidationMessage('Geolocation is not supported by your device or browser. You can navigate the map manually or search for your village.', 'warning');
+  function captureGpsCorner() {
+    if (drawState !== 'DRAWING') {
+      showValidationMessage('Click "Start Drawing Parcel" first, then stand at each field boundary corner and click "Capture GPS Corner".', 'warning');
       return;
     }
 
-    if (elements.locateGpsBtn) {
-      elements.locateGpsBtn.disabled = true;
-      elements.locateGpsBtn.classList.add('loading');
-      elements.locateGpsBtn.innerHTML = `
-        <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" stroke-width="2" stroke-dasharray="32" stroke-dashoffset="16"/></svg>
-        Acquiring GPS Fix...
-      `;
+    if (!currentGpsPosition || typeof currentGpsPosition.lat !== 'number') {
+      showValidationMessage('No current GPS fix available. Click "Locate My Field (GPS)" to acquire your position first.', 'warning');
+      return;
     }
 
-    showValidationMessage('Acquiring high-accuracy device location from hardware sensors...', 'info');
-
-    // If already watching, clear existing watch
-    if (watchId !== null) {
-      navigator.geolocation.clearWatch(watchId);
-      watchId = null;
-    }
-
-    let initialFixReceived = false;
-
-    watchId = navigator.geolocation.watchPosition(
-      async (pos) => {
-        const lat = pos.coords.latitude;
-        const lng = pos.coords.longitude;
-        const accuracy = Math.round(pos.coords.accuracy);
-        const timestamp = pos.timestamp;
-
-        if (elements.locateGpsBtn) {
-          elements.locateGpsBtn.disabled = false;
-          elements.locateGpsBtn.classList.remove('loading');
-          elements.locateGpsBtn.innerHTML = `
-            <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3" stroke-width="2"/><circle cx="12" cy="12" r="8" stroke-width="2"/></svg>
-            Locate My Field (GPS)
-          `;
-        }
-
-        isTracking = true;
-        if (elements.locTrackingStatus) {
-          elements.locTrackingStatus.style.display = 'inline-flex';
-        }
-
-        const isFirst = !initialFixReceived;
-        initialFixReceived = true;
-
-        await applyGpsReading(lat, lng, accuracy, timestamp, pos.coords, isFirst);
-
-        if (isFirst) {
-          if (accuracy > 50) {
-            showValidationMessage(`Location detected (&plusmn;${accuracy}m accuracy, approximate). Center placed over ${currentGpsPosition.address?.primaryPlace || 'area'}. Laptops or cellular devices without active satellite lock may report network positioning. You can click "Improve Location Accuracy" or navigate manually.`, 'warning');
-          } else {
-            showValidationMessage(`High-precision GPS fix acquired (&plusmn;${accuracy}m). Center placed over ${currentGpsPosition.address?.primaryPlace || 'field'}. Click "Start Drawing Parcel" to outline boundary.`, 'success');
-          }
-        }
-      },
-      (err) => {
-        if (elements.locateGpsBtn) {
-          elements.locateGpsBtn.disabled = false;
-          elements.locateGpsBtn.classList.remove('loading');
-          elements.locateGpsBtn.innerHTML = `
-            <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3" stroke-width="2"/><circle cx="12" cy="12" r="8" stroke-width="2"/></svg>
-            Locate My Field (GPS)
-          `;
-        }
-
-        let errMsg = 'Location access failed.';
-        if (err.code === 1) {
-          errMsg = 'Location permission was denied in your browser settings. To enable: click the permissions/lock icon next to the address bar, allow Location access, and click "Locate My Field" again. You can also search for your village name below.';
-        } else if (err.code === 2) {
-          errMsg = 'GPS position is unavailable from your device sensors. Please ensure Location Services are switched on in your device settings.';
-        } else if (err.code === 3) {
-          errMsg = 'GPS request timed out. Please ensure you have network connectivity or clear sky visibility and try again.';
-        }
-
-        showValidationMessage(errMsg, 'warning');
-      },
-      {
-        enableHighAccuracy: true,
-        timeout: 20000,
-        maximumAge: 0
+    if (currentGpsPosition.accuracy > 35) {
+      if (typeof confirm === 'function') {
+        const confirmLowAcc = confirm(`Reported GPS accuracy is ±${currentGpsPosition.accuracy}m (approximate). Recording points with low accuracy may create inaccurate parcel boundaries. Would you like to record this corner anyway?`);
+        if (!confirmLowAcc) return;
       }
-    );
+    }
+
+    const pt = { lat: currentGpsPosition.lat, lng: currentGpsPosition.lng };
+    addVertex(pt);
+    showValidationMessage(`Corner point ${vertices.length} captured from live GPS (±${currentGpsPosition.accuracy}m accuracy). Walk to the next corner and tap "Capture GPS Corner".`, 'success');
   }
 
   /**
    * Improve Location Accuracy Multi-Sample Convergence Engine
-   * Samples successive position readings, retains the lowest uncertainty fix,
-   * and reports realistic feedback based on device capabilities.
    */
   async function improveLocationAccuracy() {
     if (isSamplingAccuracy) return;
@@ -816,24 +918,24 @@ const AgriTrustFieldManager = (() => {
       elements.improveBtnText.textContent = 'Sampling GPS signals...';
     }
 
-    showValidationMessage('Sampling multiple device location updates to achieve the tightest satellite accuracy fix...', 'info');
+    showValidationMessage('Sampling multiple hardware location fixes to achieve the lowest uncertainty radius...', 'info');
 
     let samples = [];
-    let initialAccuracy = currentGpsPosition ? currentGpsPosition.accuracy : 99999;
-    let bestAcc = initialAccuracy;
-    let bestPos = currentGpsPosition;
+    let initialAcc = currentGpsPosition ? currentGpsPosition.accuracy : 99999;
+    let bestAcc = initialAcc;
+    let bestSample = currentGpsPosition;
 
-    let sampleWatchId = null;
-    let timerId = null;
+    let sampleWatch = null;
+    let timer = null;
 
-    const finalizeSampling = () => {
-      if (sampleWatchId !== null) {
-        navigator.geolocation.clearWatch(sampleWatchId);
-        sampleWatchId = null;
+    const finishSampling = () => {
+      if (sampleWatch !== null) {
+        navigator.geolocation.clearWatch(sampleWatch);
+        sampleWatch = null;
       }
-      if (timerId !== null) {
-        clearTimeout(timerId);
-        timerId = null;
+      if (timer !== null) {
+        clearTimeout(timer);
+        timer = null;
       }
 
       isSamplingAccuracy = false;
@@ -845,51 +947,43 @@ const AgriTrustFieldManager = (() => {
         elements.improveBtnText.textContent = 'Improve Location Accuracy';
       }
 
-      if (bestPos && bestPos !== currentGpsPosition) {
-        applyGpsReading(bestPos.lat, bestPos.lng, bestPos.accuracy, bestPos.timestamp, bestPos.coords, true);
+      if (bestSample && bestSample !== currentGpsPosition) {
+        applyGpsReading(bestSample.lat, bestSample.lng, bestSample.accuracy, bestSample.timestamp, bestSample.coords, true);
       }
 
-      const isMobile = isMobileDevice();
-      if (bestAcc < initialAccuracy) {
-        showValidationMessage(`Location accuracy improved from &plusmn;${initialAccuracy}m to &plusmn;${bestAcc}m (${classifyLocationSource(bestAcc, bestPos?.coords)}). Map centered on refined position.`, 'success');
+      if (bestAcc < initialAcc) {
+        showValidationMessage(`Location accuracy improved from &plusmn;${initialAcc}m to &plusmn;${bestAcc}m. Center refined over field.`, 'success');
       } else if (bestAcc <= 20) {
-        showValidationMessage(`High-precision GPS fix confirmed (&plusmn;${bestAcc}m). Ready for field boundary creation.`, 'success');
+        showValidationMessage(`High-precision satellite GNSS fix confirmed (&plusmn;${bestAcc}m). Ready to map boundaries.`, 'success');
       } else {
-        if (!isMobile) {
-          showValidationMessage(`Sampling complete. Best fix available on this laptop is &plusmn;${bestAcc}m. Note: Laptops lack built-in satellite GPS hardware and use Wi-Fi/ISP network positioning. For &le;10m accuracy, access AgriTrust from a smartphone outdoors with GPS enabled.`, 'info');
-        } else {
-          showValidationMessage(`Sampling complete. Best fix: &plusmn;${bestAcc}m. For higher accuracy (&le;15m), ensure you are outdoors away from tall obstructions and that Google Location Accuracy / GPS is enabled.`, 'info');
-        }
+        showValidationMessage(`Sampling complete. Best fix available: &plusmn;${bestAcc}m. For sub-10m precision, access AgriTrust outdoors from a smartphone with clear sky view.`, 'info');
       }
     };
 
-    // Watch position during sampling window
-    sampleWatchId = navigator.geolocation.watchPosition(
+    sampleWatch = navigator.geolocation.watchPosition(
       (pos) => {
         const lat = pos.coords.latitude;
         const lng = pos.coords.longitude;
-        const accuracy = Math.round(pos.coords.accuracy);
-        const timestamp = pos.timestamp;
+        const acc = Math.round(pos.coords.accuracy);
 
-        samples.push({ lat, lng, accuracy, timestamp, coords: pos.coords });
+        samples.push({ lat, lng, accuracy: acc, timestamp: pos.timestamp, coords: pos.coords });
 
         if (elements.improveBtnText) {
-          elements.improveBtnText.textContent = `Sampling (${samples.length} fixes, best: ±${Math.min(bestAcc, accuracy)}m)...`;
+          elements.improveBtnText.textContent = `Sampling (${samples.length} fixes, best: ±${Math.min(bestAcc, acc)}m)...`;
         }
 
-        if (accuracy < bestAcc) {
-          bestAcc = accuracy;
-          bestPos = { lat, lng, accuracy, timestamp, coords: pos.coords };
-          applyGpsReading(lat, lng, accuracy, timestamp, pos.coords, false);
+        if (acc < bestAcc) {
+          bestAcc = acc;
+          bestSample = { lat, lng, accuracy: acc, timestamp: pos.timestamp, coords: pos.coords };
+          applyGpsReading(lat, lng, acc, pos.timestamp, pos.coords, false);
         }
 
-        // If we reach <= 8 meters, that is an outstanding GNSS fix; finalize early after 2+ samples
         if (bestAcc <= 8 && samples.length >= 2) {
-          finalizeSampling();
+          finishSampling();
         }
       },
       (err) => {
-        console.warn('[AgriTrustFieldManager] Sampling update error:', err);
+        console.warn('[AgriTrustFieldManager] Sampling error:', err);
       },
       {
         enableHighAccuracy: true,
@@ -898,148 +992,152 @@ const AgriTrustFieldManager = (() => {
       }
     );
 
-    // Timeout after 7.5 seconds
-    timerId = setTimeout(() => {
-      finalizeSampling();
+    timer = setTimeout(() => {
+      finishSampling();
     }, 7500);
   }
 
   /**
-   * Stops continuous geolocation tracking
+   * Classify location source and accuracy tiers
    */
-  function stopTracking() {
-    if (watchId !== null) {
-      navigator.geolocation.clearWatch(watchId);
-      watchId = null;
+  function classifyAccuracyTier(accuracy) {
+    if (typeof accuracy !== 'number' || isNaN(accuracy) || accuracy <= 0) {
+      return { tier: 'target', label: 'TARGET', colorClass: 'tier-moderate' };
     }
-    isTracking = false;
-    if (elements.locTrackingStatus) {
-      elements.locTrackingStatus.style.display = 'none';
+    if (accuracy <= 20) {
+      return { tier: 'high', label: 'HIGH ACCURACY', colorClass: 'tier-high' };
+    }
+    if (accuracy <= 50) {
+      return { tier: 'moderate', label: 'MODERATE ACCURACY', colorClass: 'tier-moderate' };
+    }
+    return { tier: 'low', label: 'LOW ACCURACY', colorClass: 'tier-low' };
+  }
+
+  function isMobileDevice() {
+    if (typeof navigator !== 'undefined') {
+      if (navigator.userAgentData && typeof navigator.userAgentData.mobile === 'boolean') {
+        return navigator.userAgentData.mobile;
+      }
+      if (navigator.userAgent) {
+        return /Android|iPhone|iPad|iPod|Mobile|webOS|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+      }
+    }
+    return false;
+  }
+
+  function classifyLocationSource(accuracy, coords) {
+    if (externalGnssProvider) {
+      return 'External GNSS Receiver (RTK / Bluetooth / USB)';
+    }
+
+    const isMobile = isMobileDevice();
+    if (isMobile) {
+      if (accuracy <= 20) {
+        return 'Device GPS / Satellite GNSS (Hardware Receiver)';
+      }
+      if (accuracy <= 50) {
+        return 'Device GPS / Wi-Fi Assisted Positioning';
+      }
+      return 'Cellular / Network Positioning (Coarse Triangulation)';
+    } else {
+      if (accuracy <= 50) {
+        return 'Wi-Fi Access Point Triangulation (802.11 BSSID)';
+      }
+      return 'Cellular / ISP Network Positioning (Coarse Lookup)';
     }
   }
 
   /**
-   * External GNSS receiver adapter hooks for RTK rover / Bluetooth / USB GNSS units
+   * Great-circle distance between two points on WGS84 sphere in meters
    */
-  function registerExternalGnss(provider) {
-    externalGnssProvider = provider;
-    if (provider && typeof provider.onPosition === 'function') {
-      provider.onPosition((pos) => {
-        applyGpsReading(pos.latitude, pos.longitude, pos.accuracy || 1, pos.timestamp || Date.now(), pos, true);
-      });
-    }
-  }
-
-  function setExternalGnssPosition(data) {
-    if (!data || typeof data.latitude !== 'number' || typeof data.longitude !== 'number') return;
-    const accuracy = data.accuracy || 1;
-    const timestamp = data.timestamp || Date.now();
-    applyGpsReading(data.latitude, data.longitude, accuracy, timestamp, data, true);
+  function getDistanceFromLatLonInM(lat1, lon1, lat2, lon2) {
+    const R = 6371000;
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const a =
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+      Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c;
   }
 
   /**
-   * Universal Place Search & Coordinate Jump
-   * Handles coordinates (lat, lng) or village/town/district place names via Nominatim geosearch
+   * Render resolved details in location card
    */
-  async function handleUniversalSearch() {
-    const raw = elements.coordInput?.value.trim();
-    if (!raw) {
-      showValidationMessage('Enter a place name (e.g. "Guntur", "Tenali") or coordinates (e.g. 16.3067, 80.4365).', 'warning');
-      return;
+  function updateLocationDisplay(lat, lng, accuracy, details, coords = null) {
+    if (!elements.locationCard) return;
+    elements.locationCard.style.display = 'block';
+
+    const primary = details?.primaryPlace || 'Agricultural Area';
+    const sub = details?.subPlace || '';
+    const district = details?.district || '';
+    const region = details?.region || '';
+
+    if (elements.locPrimaryPlace) elements.locPrimaryPlace.textContent = primary;
+    if (elements.locSubPlace) {
+      elements.locSubPlace.textContent = sub;
+      elements.locSubPlace.style.display = sub ? 'block' : 'none';
+    }
+    if (elements.locDistrict) {
+      elements.locDistrict.textContent = district;
+      elements.locDistrict.style.display = district ? 'block' : 'none';
+    }
+    if (elements.locRegion) elements.locRegion.textContent = region;
+    if (elements.locCoords) elements.locCoords.textContent = `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+
+    const tierInfo = classifyAccuracyTier(accuracy);
+    if (elements.locAccuracy) {
+      elements.locAccuracy.textContent = accuracy > 0 ? `±${accuracy} m` : 'Target Point';
+    }
+    if (elements.locAccuracyTier) {
+      elements.locAccuracyTier.textContent = tierInfo.label;
+      elements.locAccuracyTier.className = `accuracy-tier-pill ${tierInfo.colorClass}`;
+    }
+    if (elements.locSource) {
+      elements.locSource.textContent = classifyLocationSource(accuracy, coords);
     }
 
-    // 1. Check if input is "lat, lng" coordinates
-    const coordParts = raw.split(/[\s,]+/);
-    if (coordParts.length >= 2) {
-      const lat = parseFloat(coordParts[0]);
-      const lng = parseFloat(coordParts[1]);
-      if (!isNaN(lat) && !isNaN(lng) && lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180) {
-        map.flyTo([lat, lng], 17, { duration: 1.5 });
-        showValidationMessage(`Centered map on coordinates: ${lat.toFixed(6)}, ${lng.toFixed(6)}. Resolving location details...`, 'info');
+    // Extended GNSS Telemetry
+    if (coords && (coords.altitude !== null || coords.speed !== null || coords.heading !== null)) {
+      if (elements.locGnssTelemetry) elements.locGnssTelemetry.style.display = 'flex';
+      if (elements.locAltitude) {
+        elements.locAltitude.innerHTML = (coords.altitude !== null && coords.altitude !== undefined)
+          ? `<small>ALT:</small> ${coords.altitude.toFixed(1)}m`
+          : `<small>ALT:</small> --`;
+      }
+      if (elements.locSpeed) {
+        elements.locSpeed.innerHTML = (coords.speed !== null && coords.speed !== undefined)
+          ? `<small>SPD:</small> ${(coords.speed * 3.6).toFixed(1)} km/h`
+          : `<small>SPD:</small> --`;
+      }
+      if (elements.locHeading) {
+        elements.locHeading.innerHTML = (coords.heading !== null && coords.heading !== undefined)
+          ? `<small>HDG:</small> ${coords.heading.toFixed(0)}°`
+          : `<small>HDG:</small> --`;
+      }
+    } else {
+      if (elements.locGnssTelemetry) elements.locGnssTelemetry.style.display = 'none';
+    }
 
-        const details = await resolveGeographicLocation(lat, lng);
-        updateLocationDisplay(lat, lng, 0, details);
-        if (elements.locAccuracy) elements.locAccuracy.textContent = 'Manual Coordinate Target';
-        if (elements.locAccuracyTier) {
-          elements.locAccuracyTier.textContent = 'TARGET';
-          elements.locAccuracyTier.className = 'accuracy-tier-pill tier-moderate';
+    // Low accuracy warning
+    if (elements.locAccuracyWarning) {
+      if (accuracy > 50) {
+        elements.locAccuracyWarning.style.display = 'block';
+        if (elements.locAccuracyWarningText) {
+          elements.locAccuracyWarningText.innerHTML = `
+            Location accuracy is currently low (&plusmn;${accuracy}m). Laptops without satellite GPS chips rely on network positioning.
+            For precision field boundaries (&le;15m), open AgriTrust outdoors on a smartphone or use the search bar to locate your parcel.
+          `;
         }
-        if (elements.locSource) elements.locSource.textContent = 'Manual Coordinate Input';
-        if (elements.locAccuracyWarning) elements.locAccuracyWarning.style.display = 'none';
-
-        showValidationMessage(`Map focused on ${details.primaryPlace || `${lat.toFixed(4)}, ${lng.toFixed(4)}`}. Outline parcel boundaries when ready.`, 'success');
-        return;
-      }
-    }
-
-    // 2. Place / village name geosearch
-    if (elements.manualJumpBtn) {
-      elements.manualJumpBtn.disabled = true;
-      if (elements.coordJumpBtnText) elements.coordJumpBtnText.textContent = 'Searching...';
-    }
-
-    showValidationMessage(`Searching real geographic records for "${raw}"...`, 'info');
-
-    try {
-      const searchUrl = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(raw)}&limit=1&addressdetails=1`;
-      const res = await fetch(searchUrl, {
-        headers: { 'Accept': 'application/json' }
-      });
-
-      if (res.ok) {
-        const results = await res.json();
-        if (results && results.length > 0) {
-          const item = results[0];
-          const lat = parseFloat(item.lat);
-          const lng = parseFloat(item.lon);
-
-          map.flyTo([lat, lng], 16, { duration: 1.5 });
-
-          const a = item.address || {};
-          const village = a.village || a.hamlet || a.town || a.city_district || a.suburb || a.city || item.name;
-          const mandal = a.subdistrict || a.tehsil || a.taluk || a.county;
-          const district = a.state_district || a.district;
-          const state = a.state;
-          const country = a.country || 'India';
-
-          const details = {
-            primaryPlace: village || item.name,
-            subPlace: mandal || null,
-            district: district || null,
-            region: [state, country].filter(Boolean).join(', ') || null,
-            state: state || null,
-            country: country,
-            displayName: item.display_name
-          };
-
-          updateLocationDisplay(lat, lng, 0, details);
-          if (elements.locAccuracy) elements.locAccuracy.textContent = 'Search Resolved Target';
-          if (elements.locAccuracyTier) {
-            elements.locAccuracyTier.textContent = 'TARGET';
-            elements.locAccuracyTier.className = 'accuracy-tier-pill tier-moderate';
-          }
-          if (elements.locSource) elements.locSource.textContent = 'Geographic Search Record';
-          if (elements.locAccuracyWarning) elements.locAccuracyWarning.style.display = 'none';
-
-          showValidationMessage(`Located: ${item.display_name}. Zoom in to find your exact plot.`, 'success');
-          return;
-        }
-      }
-
-      showValidationMessage(`No geographic match found for "${raw}". Please verify spelling or enter latitude & longitude coordinates.`, 'warning');
-    } catch (err) {
-      console.warn('[AgriTrustFieldManager] Place search error:', err);
-      showValidationMessage(`Search network request failed. You can pan the map manually or enter coordinates.`, 'error');
-    } finally {
-      if (elements.manualJumpBtn) {
-        elements.manualJumpBtn.disabled = false;
-        if (elements.coordJumpBtnText) elements.coordJumpBtnText.textContent = 'Search / Go';
+      } else {
+        elements.locAccuracyWarning.style.display = 'none';
       }
     }
   }
 
   /**
-   * Toggle Drawing State Machine
+   * Field Boundary Drawing State Machine (Google Maps Polygons)
    */
   function toggleDrawingState() {
     if (drawState === 'IDLE') {
@@ -1048,13 +1146,13 @@ const AgriTrustFieldManager = (() => {
       if (vertices.length >= 3) {
         closePolygon();
       } else {
-        showValidationMessage('You need at least 3 points to close a field parcel boundary.', 'warning');
+        showValidationMessage('A field parcel boundary requires at least 3 points.', 'warning');
       }
     } else if (drawState === 'CLOSED') {
-      // Re-open for editing
+      // Reopen for editing
       drawState = 'DRAWING';
       updateUIForState();
-      showValidationMessage('Parcel reopened for editing. Click on the map to add more points, or click "Complete Parcel" when done.', 'info');
+      showValidationMessage('Parcel reopened for editing. Click the map or capture GPS corners to add points, then click "Complete Parcel".', 'info');
     }
   }
 
@@ -1062,119 +1160,115 @@ const AgriTrustFieldManager = (() => {
     resetDrawing();
     drawState = 'DRAWING';
     updateUIForState();
-    elements.mapContainer.classList.add('map-drawing-active');
-    showValidationMessage('Click anywhere on the satellite image to place the first corner of your field parcel.', 'info');
+    if (elements.captureGpsCornerBtn) {
+      elements.captureGpsCornerBtn.disabled = !(currentGpsPosition && currentGpsPosition.lat);
+    }
+    showValidationMessage('Click anywhere on the satellite image or click "Capture GPS Corner" to place the first boundary corner.', 'info');
   }
 
-  /**
-   * Map Click Handler
-   */
-  function handleMapClick(e) {
+  function handleMapClick(latLng) {
     if (drawState !== 'DRAWING') return;
-
-    const latlng = e.latlng;
-    addVertex(latlng);
+    addVertex(latLng);
   }
 
-  /**
-   * Add Vertex to current boundary
-   */
-  function addVertex(latlng) {
-    const point = { lat: latlng.lat, lng: latlng.lng };
-    vertices.push(point);
+  function addVertex(latLng) {
+    const pt = {
+      lat: typeof latLng.lat === 'function' ? latLng.lat() : latLng.lat,
+      lng: typeof latLng.lng === 'function' ? latLng.lng() : latLng.lng
+    };
 
-    const vertexIndex = vertices.length - 1;
-    const isFirstPoint = vertexIndex === 0;
+    vertices.push(pt);
+    const idx = vertices.length - 1;
+    const isFirst = idx === 0;
 
-    // Create marker for vertex
-    const marker = createVertexMarker(point, vertexIndex, isFirstPoint);
-    marker.addTo(map);
-    vertexMarkers.push(marker);
+    const marker = createVertexMarker(pt, idx, isFirst);
+    if (marker) {
+      vertexMarkers.push(marker);
+    }
 
     updatePolylinePreview();
     updateTelemetry();
 
     if (vertices.length === 1) {
-      showValidationMessage('First point placed. Click the next boundary corner of your field.', 'info');
+      showValidationMessage('First corner placed. Click the next boundary corner or walk to it and capture GPS.', 'info');
     } else if (vertices.length === 2) {
       showValidationMessage('Second corner placed. Continue outlining your parcel (minimum 3 points required).', 'info');
     } else {
-      showValidationMessage(`${vertices.length} points placed. Click the first point (golden anchor) or "Complete Parcel" to close the boundary.`, 'info');
+      showValidationMessage(`${vertices.length} corners placed. Click point 1 (golden pin) or click "Complete Parcel" to close the boundary.`, 'info');
     }
   }
 
-  /**
-   * Create custom interactive Leaflet Marker for vertex
-   */
-  function createVertexMarker(point, index, isFirstPoint = false) {
-    const markerClass = isFirstPoint ? 'field-vertex-marker first-vertex' : 'field-vertex-marker';
-    const htmlContent = isFirstPoint
-      ? `<div class="vertex-anchor first-anchor" title="Click to close parcel"><span class="vertex-num">1</span></div>`
-      : `<div class="vertex-anchor"><span class="vertex-num">${index + 1}</span></div>`;
+  function createVertexMarker(point, index, isFirst = false) {
+    if (!map || !window.google?.maps) return null;
 
-    const icon = L.divIcon({
-      className: markerClass,
-      html: htmlContent,
-      iconSize: [26, 26],
-      iconAnchor: [13, 13]
-    });
+    const latLng = new google.maps.LatLng(point.lat, point.lng);
 
-    const marker = L.marker([point.lat, point.lng], {
-      icon: icon,
+    const marker = new google.maps.Marker({
+      map,
+      position: latLng,
       draggable: drawState === 'CLOSED',
-      riseOnHover: true
+      label: {
+        text: String(index + 1),
+        color: '#ffffff',
+        fontWeight: 'bold',
+        fontSize: '11px'
+      },
+      icon: {
+        path: google.maps.SymbolPath.CIRCLE,
+        scale: 13,
+        fillColor: isFirst ? '#d97706' : '#16a34a', // Golden for first anchor, emerald for others
+        fillOpacity: 1,
+        strokeColor: '#ffffff',
+        strokeWeight: 2
+      },
+      title: isFirst ? 'Corner 1 (Click to close parcel)' : `Corner ${index + 1}`
     });
 
-    // Clicking first point closes polygon if >= 3 points
-    marker.on('click', (ev) => {
-      L.DomEvent.stopPropagation(ev);
+    marker.addListener('click', () => {
       if (drawState === 'DRAWING' && index === 0 && vertices.length >= 3) {
         closePolygon();
-      } else if (drawState === 'CLOSED') {
-        // Option to delete this vertex
-        promptDeleteVertex(index);
       }
     });
 
-    // Drag handling when closed
-    marker.on('drag', (ev) => {
-      const newPos = ev.target.getLatLng();
-      vertices[index] = { lat: newPos.lat, lng: newPos.lng };
-      if (polygonLayer) {
-        polygonLayer.setLatLngs(vertices);
+    marker.addListener('drag', (e) => {
+      vertices[index] = { lat: e.latLng.lat(), lng: e.latLng.lng() };
+      if (activePolygon) {
+        activePolygon.setPath(vertices);
       }
       updateTelemetry();
     });
 
-    marker.on('dragend', () => {
+    marker.addListener('dragend', () => {
       validateAndRenderGeometry();
     });
 
     return marker;
   }
 
-  /**
-   * Update transient polyline connecting points during DRAWING
-   */
   function updatePolylinePreview() {
     if (previewPolyline) {
-      map.removeLayer(previewPolyline);
+      previewPolyline.setMap(null);
       previewPolyline = null;
     }
 
+    if (!map || !window.google?.maps) return;
+
     if (vertices.length > 1) {
-      previewPolyline = L.polyline(vertices, {
-        color: '#168a4d',
-        weight: 3,
-        dashArray: '6, 6',
-        opacity: 0.9
-      }).addTo(map);
+      previewPolyline = new google.maps.Polyline({
+        map,
+        path: vertices,
+        strokeColor: '#168a4d',
+        strokeOpacity: 0.9,
+        strokeWeight: 3,
+        icons: [{
+          icon: { path: 'M 0,-1 0,1', strokeOpacity: 1, scale: 3 },
+          offset: '0',
+          repeat: '15px'
+        }]
+      });
     }
   }
 
-  /**
-   * Close Polygon ring
-   */
   function closePolygon() {
     if (vertices.length < 3) {
       showValidationMessage('A valid parcel polygon requires at least 3 points.', 'warning');
@@ -1182,53 +1276,55 @@ const AgriTrustFieldManager = (() => {
     }
 
     drawState = 'CLOSED';
-    elements.mapContainer.classList.remove('map-drawing-active');
 
-    // Remove polyline preview
     if (previewPolyline) {
-      map.removeLayer(previewPolyline);
+      previewPolyline.setMap(null);
       previewPolyline = null;
     }
 
-    // Enable dragging on all vertex markers
-    vertexMarkers.forEach((m) => {
-      m.dragging.enable();
-    });
+    vertexMarkers.forEach(m => m.setDraggable(true));
 
     validateAndRenderGeometry();
     updateUIForState();
   }
 
-  /**
-   * Render closed polygon and run geometric checks
-   */
   function validateAndRenderGeometry() {
-    if (polygonLayer) {
-      map.removeLayer(polygonLayer);
-      polygonLayer = null;
+    if (activePolygon) {
+      activePolygon.setMap(null);
+      activePolygon = null;
     }
 
-    // Validate geometry
     const validation = validatePolygon(vertices);
 
     if (validation.valid) {
-      polygonLayer = L.polygon(vertices, {
-        color: '#168a4d',
-        weight: 3,
-        fillColor: '#22c55e',
-        fillOpacity: 0.28
-      }).addTo(map);
+      if (map && window.google?.maps) {
+        activePolygon = new google.maps.Polygon({
+          map,
+          paths: vertices,
+          strokeColor: '#168a4d',
+          strokeOpacity: 0.95,
+          strokeWeight: 3,
+          fillColor: '#22c55e',
+          fillOpacity: 0.28,
+          clickable: false
+        });
+      }
 
       updateTelemetry(true);
-      showValidationMessage(`Parcel boundary validated! Total area: ${elements.telemetryAreaAcres?.textContent} acres (${elements.telemetryAreaHa?.textContent} ha). Drag corners to adjust. Fill in details and click "Save Parcel Boundary".`, 'success');
+      showValidationMessage(`Parcel boundary validated! Area: ${elements.telemetryAreaAcres?.textContent} acres (${elements.telemetryAreaHa?.textContent} ha). Drag corner markers to adjust. Fill in details and click "Save Parcel Boundary".`, 'success');
     } else {
-      polygonLayer = L.polygon(vertices, {
-        color: '#be123c',
-        weight: 3,
-        fillColor: '#f43f5e',
-        fillOpacity: 0.28,
-        dashArray: '4, 4'
-      }).addTo(map);
+      if (map && window.google?.maps) {
+        activePolygon = new google.maps.Polygon({
+          map,
+          paths: vertices,
+          strokeColor: '#be123c',
+          strokeOpacity: 0.95,
+          strokeWeight: 3,
+          fillColor: '#f43f5e',
+          fillOpacity: 0.28,
+          clickable: false
+        });
+      }
 
       updateTelemetry(false);
       showValidationMessage(`Invalid Boundary: ${validation.error}`, 'error');
@@ -1236,119 +1332,32 @@ const AgriTrustFieldManager = (() => {
   }
 
   /**
-   * Delete individual vertex point
-   */
-  function promptDeleteVertex(index) {
-    if (vertices.length <= 3) {
-      showValidationMessage('Cannot delete point: A field parcel requires a minimum of 3 boundary vertices.', 'warning');
-      return;
-    }
-
-    vertices.splice(index, 1);
-    rebuildVertexMarkers();
-    validateAndRenderGeometry();
-    showValidationMessage(`Point ${index + 1} deleted. Boundary updated.`, 'info');
-  }
-
-  function rebuildVertexMarkers() {
-    vertexMarkers.forEach((m) => map.removeLayer(m));
-    vertexMarkers = [];
-
-    vertices.forEach((p, i) => {
-      const marker = createVertexMarker(p, i, i === 0);
-      marker.addTo(map);
-      marker.dragging.enable();
-      vertexMarkers.push(marker);
-    });
-  }
-
-  /**
-   * Undo Last Point
-   */
-  function undoLastPoint() {
-    if (vertices.length === 0) return;
-
-    vertices.pop();
-    const lastMarker = vertexMarkers.pop();
-    if (lastMarker) {
-      map.removeLayer(lastMarker);
-    }
-
-    if (drawState === 'CLOSED') {
-      drawState = 'DRAWING';
-      elements.mapContainer.classList.add('map-drawing-active');
-      if (polygonLayer) {
-        map.removeLayer(polygonLayer);
-        polygonLayer = null;
-      }
-      vertexMarkers.forEach((m) => m.dragging.disable());
-    }
-
-    updatePolylinePreview();
-    updateTelemetry();
-    updateUIForState();
-
-    showValidationMessage(vertices.length > 0 ? `Removed last point. ${vertices.length} points remaining.` : 'All points removed. Click map to place first corner.', 'info');
-  }
-
-  /**
-   * Reset / Clear Drawing
-   */
-  function resetDrawing() {
-    drawState = 'IDLE';
-    vertices = [];
-
-    vertexMarkers.forEach((m) => map.removeLayer(m));
-    vertexMarkers = [];
-
-    if (previewPolyline) {
-      map.removeLayer(previewPolyline);
-      previewPolyline = null;
-    }
-
-    if (polygonLayer) {
-      map.removeLayer(polygonLayer);
-      polygonLayer = null;
-    }
-
-    elements.mapContainer.classList.remove('map-drawing-active');
-    updateTelemetry();
-    updateUIForState();
-    showValidationMessage('Parcel drawing cleared. Click "Start Drawing Parcel" to outline a field.', 'info');
-  }
-
-  /**
-   * Calculate WGS84 Geodesic Surface Area of polygon in Square Meters
-   * Formula: Spherical excess on WGS84 ellipsoid model
+   * Geodesic Surface Area Calculation on WGS84 Ellipsoid (Google Geometry Library)
    */
   function calculateGeodesicArea(coords) {
     if (!coords || coords.length < 3) return 0;
 
-    const R = 6378137; // Earth radius in meters
-    let total = 0;
+    // Use Google Maps spherical geometry computeArea if available
+    if (window.google?.maps?.geometry?.spherical) {
+      const gPath = coords.map(c => new google.maps.LatLng(c.lat, c.lng));
+      return google.maps.geometry.spherical.computeArea(gPath);
+    }
 
+    // Mathematical spherical excess fallback
+    const R = 6378137;
+    let total = 0;
     for (let i = 0; i < coords.length; i++) {
       const p1 = coords[i];
       const p2 = coords[(i + 1) % coords.length];
-
       const radLat1 = p1.lat * (Math.PI / 180);
       const radLat2 = p2.lat * (Math.PI / 180);
       const radLng1 = p1.lng * (Math.PI / 180);
       const radLng2 = p2.lng * (Math.PI / 180);
-
       total += (radLng2 - radLng1) * (2 + Math.sin(radLat1) + Math.sin(radLat2));
     }
-
-    const areaM2 = Math.abs((total * R * R) / 2.0);
-    return areaM2;
+    return Math.abs((total * R * R) / 2.0);
   }
 
-  /**
-   * Geometric Validation:
-   * 1. At least 3 points
-   * 2. Area > 0
-   * 3. No self-intersecting segments (ensures PostGIS ST_IsValid)
-   */
   function validatePolygon(coords) {
     if (!coords || coords.length < 3) {
       return { valid: false, error: 'At least 3 boundary vertices are required.' };
@@ -1359,20 +1368,16 @@ const AgriTrustFieldManager = (() => {
       return { valid: false, error: 'Calculated parcel area is too small or degenerate.' };
     }
 
-    // Check for self-intersections
     if (hasSelfIntersection(coords)) {
       return {
         valid: false,
-        error: 'Parcel edges cross over each other. PostGIS requires a simple, non-self-intersecting polygon. Please drag corners to uncross edges.'
+        error: 'Parcel edges cross over each other. PostGIS requires simple, non-self-intersecting polygons. Drag corners to uncross edges.'
       };
     }
 
     return { valid: true, areaM2 };
   }
 
-  /**
-   * Helper: Line segment intersection detection
-   */
   function hasSelfIntersection(points) {
     const n = points.length;
     if (n < 4) return false;
@@ -1382,14 +1387,11 @@ const AgriTrustFieldManager = (() => {
       const a2 = points[(i + 1) % n];
 
       for (let j = i + 1; j < n; j++) {
-        // Adjacent edges share a vertex, skip them
         if (Math.abs(i - j) <= 1 || (i === 0 && j === n - 1)) {
           continue;
         }
-
         const b1 = points[j];
         const b2 = points[(j + 1) % n];
-
         if (doSegmentsIntersect(a1, a2, b1, b2)) {
           return true;
         }
@@ -1405,9 +1407,52 @@ const AgriTrustFieldManager = (() => {
     return (ccw(p1, p3, p4) !== ccw(p2, p3, p4)) && (ccw(p1, p2, p3) !== ccw(p1, p2, p4));
   }
 
-  /**
-   * Update Telemetry HUD and Form Acreage
-   */
+  function undoLastPoint() {
+    if (vertices.length === 0) return;
+
+    vertices.pop();
+    const lastMarker = vertexMarkers.pop();
+    if (lastMarker) {
+      lastMarker.setMap(null);
+    }
+
+    if (drawState === 'CLOSED') {
+      drawState = 'DRAWING';
+      if (activePolygon) {
+        activePolygon.setMap(null);
+        activePolygon = null;
+      }
+      vertexMarkers.forEach(m => m.setDraggable(false));
+    }
+
+    updatePolylinePreview();
+    updateTelemetry();
+    updateUIForState();
+
+    showValidationMessage(vertices.length > 0 ? `Removed last point. ${vertices.length} corners remaining.` : 'All points removed. Click map to place first corner.', 'info');
+  }
+
+  function resetDrawing() {
+    drawState = 'IDLE';
+    vertices = [];
+
+    vertexMarkers.forEach(m => m.setMap(null));
+    vertexMarkers = [];
+
+    if (previewPolyline) {
+      previewPolyline.setMap(null);
+      previewPolyline = null;
+    }
+
+    if (activePolygon) {
+      activePolygon.setMap(null);
+      activePolygon = null;
+    }
+
+    updateTelemetry();
+    updateUIForState();
+  }
+
   function updateTelemetry(isValid = null) {
     const count = vertices.length;
     if (elements.telemetryPoints) {
@@ -1446,9 +1491,6 @@ const AgriTrustFieldManager = (() => {
     }
   }
 
-  /**
-   * Update UI button labels and active states
-   */
   function updateUIForState() {
     if (!elements.startDrawBtn) return;
 
@@ -1459,6 +1501,7 @@ const AgriTrustFieldManager = (() => {
       `;
       elements.startDrawBtn.className = 'btn btn-primary';
       if (elements.saveFieldBtn) elements.saveFieldBtn.disabled = true;
+      if (elements.captureGpsCornerBtn) elements.captureGpsCornerBtn.disabled = true;
     } else if (drawState === 'DRAWING') {
       elements.startDrawBtn.innerHTML = `
         <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
@@ -1466,6 +1509,9 @@ const AgriTrustFieldManager = (() => {
       `;
       elements.startDrawBtn.className = 'btn btn-success';
       if (elements.saveFieldBtn) elements.saveFieldBtn.disabled = true;
+      if (elements.captureGpsCornerBtn) {
+        elements.captureGpsCornerBtn.disabled = !(currentGpsPosition && currentGpsPosition.lat);
+      }
     } else if (drawState === 'CLOSED') {
       elements.startDrawBtn.innerHTML = `
         <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
@@ -1473,6 +1519,7 @@ const AgriTrustFieldManager = (() => {
       `;
       elements.startDrawBtn.className = 'btn btn-secondary';
       if (elements.saveFieldBtn) elements.saveFieldBtn.disabled = false;
+      if (elements.captureGpsCornerBtn) elements.captureGpsCornerBtn.disabled = true;
     }
   }
 
@@ -1506,21 +1553,17 @@ const AgriTrustFieldManager = (() => {
   }
 
   /**
-   * Serialize vertices into PostGIS EWKT (SRID=4326;POLYGON((lon1 lat1, lon2 lat2, ...)))
+   * PostGIS Serialization: SRID=4326;POLYGON((lon lat, ...))
    */
   function toPostGISEWKT(coords) {
-    if (coords.length < 3) return null;
-
-    // Coordinate string format: "longitude latitude"
-    const pointsList = coords.map((c) => `${c.lng.toFixed(7)} ${c.lat.toFixed(7)}`);
-    // Close the ring by repeating the first coordinate
-    pointsList.push(`${coords[0].lng.toFixed(7)} ${coords[0].lat.toFixed(7)}`);
-
-    return `SRID=4326;POLYGON((${pointsList.join(', ')}))`;
+    if (!coords || coords.length < 3) return null;
+    const pts = coords.map(c => `${c.lng.toFixed(7)} ${c.lat.toFixed(7)}`);
+    pts.push(`${coords[0].lng.toFixed(7)} ${coords[0].lat.toFixed(7)}`);
+    return `SRID=4326;POLYGON((${pts.join(', ')}))`;
   }
 
   /**
-   * Form Submit: Save Field Parcel to Supabase
+   * Save / Update Field Parcel into Supabase PostGIS
    */
   async function handleFieldFormSubmit(e) {
     e.preventDefault();
@@ -1543,28 +1586,24 @@ const AgriTrustFieldManager = (() => {
     const acreageVal = parseFloat(elements.fieldAcreageInput?.value);
 
     if (!name) {
-      showValidationMessage('Please provide a name for this field parcel (e.g., "North 40 Corn").', 'warning');
+      showValidationMessage('Please provide a name for this field parcel.', 'warning');
       return;
     }
-
     if (!cropVariety) {
-      showValidationMessage('Please enter the crop variety (e.g., "Maize (Zea mays)", "Soybeans").', 'warning');
+      showValidationMessage('Please enter the crop variety.', 'warning');
       return;
     }
-
     if (isNaN(acreageVal) || acreageVal <= 0) {
-      showValidationMessage('Calculated parcel area must be greater than zero. Please close your boundary polygon on the map.', 'warning');
+      showValidationMessage('Calculated parcel area must be greater than zero.', 'warning');
       return;
     }
 
-    // Convert to PostGIS EWKT
     const ewkt = toPostGISEWKT(vertices);
     if (!ewkt) {
       showValidationMessage('Error generating PostGIS geometry from boundary.', 'error');
       return;
     }
 
-    // Check auth
     if (!window.AgriTrustSupabase) {
       showValidationMessage('Supabase client is not available.', 'error');
       return;
@@ -1573,11 +1612,8 @@ const AgriTrustFieldManager = (() => {
     const user = await window.AgriTrustSupabase.getUser();
     if (!user) {
       showValidationMessage('You must be signed in to save this field. Please sign in via the portal modal.', 'warning');
-      // Trigger login modal
       const loginModal = document.getElementById('authModal');
-      if (loginModal) {
-        loginModal.classList.add('active');
-      }
+      if (loginModal) loginModal.classList.add('active');
       return;
     }
 
@@ -1588,7 +1624,6 @@ const AgriTrustFieldManager = (() => {
 
     let result;
     if (editingFieldId) {
-      showValidationMessage('Updating existing parcel boundary in Supabase...', 'info');
       result = await window.AgriTrustSupabase.updateField(editingFieldId, {
         name,
         crop_variety: cropVariety,
@@ -1598,7 +1633,6 @@ const AgriTrustFieldManager = (() => {
         soil_texture_type: soilTexture
       });
     } else {
-      showValidationMessage('Saving parcel geometry into Supabase fields table with PostGIS validation...', 'info');
       result = await window.AgriTrustSupabase.saveField({
         name,
         crop_variety: cropVariety,
@@ -1618,9 +1652,8 @@ const AgriTrustFieldManager = (() => {
       const safeName = escapeHTML(name);
       const msg = editingFieldId
         ? `Field "${safeName}" successfully updated in Supabase PostGIS! <a href="#dashboard" style="color: #166534; font-weight: 600; text-decoration: underline; margin-left: 0.5rem;">View in Farm Dashboard &rarr;</a>`
-        : `Field "${safeName}" successfully registered in Supabase PostGIS! ID: ${result.field?.id || 'Created'}. <a href="#dashboard" style="color: #166534; font-weight: 600; text-decoration: underline; margin-left: 0.5rem;">View in Farm Dashboard &rarr;</a>`;
+        : `Field "${safeName}" successfully registered in Supabase PostGIS! <a href="#dashboard" style="color: #166534; font-weight: 600; text-decoration: underline; margin-left: 0.5rem;">View in Farm Dashboard &rarr;</a>`;
       showValidationMessage(msg, 'success');
-      // Reset editing ID, form and reload fields
       editingFieldId = null;
       elements.saveFieldForm.reset();
       resetDrawing();
@@ -1632,14 +1665,19 @@ const AgriTrustFieldManager = (() => {
   }
 
   /**
-   * Load and render existing grower fields from Supabase
+   * Load and render registered farmer fields from Supabase PostGIS
    */
   async function loadRegisteredFields() {
     if (!window.AgriTrustSupabase) return;
 
-    const result = await window.AgriTrustSupabase.fetchUserFields();
-    existingFieldsLayers.clearLayers();
+    // Clear existing Google field polygons & active NDVI overlays
+    Object.values(savedFieldPolygons).forEach(p => p.setMap(null));
+    savedFieldPolygons = {};
     savedFieldsMap = {};
+    Object.values(activeNdviOverlays).forEach(ov => ov && ov.setMap && ov.setMap(null));
+    activeNdviOverlays = {};
+
+    const result = await window.AgriTrustSupabase.fetchUserFields();
 
     if (!result.success || !result.fields || result.fields.length === 0) {
       if (elements.registeredFieldsList) {
@@ -1652,8 +1690,11 @@ const AgriTrustFieldManager = (() => {
       elements.registeredFieldsList.innerHTML = '';
     }
 
+    const overallBounds = new google.maps.LatLngBounds();
+    let validBoundsCount = 0;
+
     result.fields.forEach((field) => {
-      savedFieldsMap[field.id] = { field: field, poly: null };
+      savedFieldsMap[field.id] = { field, poly: null };
 
       // Add to list
       if (elements.registeredFieldsList) {
@@ -1668,75 +1709,138 @@ const AgriTrustFieldManager = (() => {
             <span>Crop: <strong>${escapeHTML(field.crop_variety)}</strong></span>
             ${field.soil_texture_type ? `<span>Soil: ${escapeHTML(field.soil_texture_type)}</span>` : ''}
           </div>
-          <button type="button" class="btn btn-subtle btn-sm js-focus-field" data-id="${field.id}">
-            <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
-            Focus on Map
-          </button>
+          <div style="display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.4rem;">
+            <button type="button" class="btn btn-subtle btn-sm js-focus-field" data-id="${field.id}">
+              <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
+              Focus on Map
+            </button>
+            <button type="button" class="btn btn-subtle btn-sm js-route-field" data-id="${field.id}" title="Calculate Google road directions to this parcel">
+              🧭 Directions
+            </button>
+            <button type="button" class="btn btn-primary btn-sm js-scan-ndvi" data-id="${field.id}" title="Scan Sentinel-2 L2A NDVI for this parcel">
+              🛰️ Scan Satellite NDVI
+            </button>
+          </div>
+          <div id="ndvi-panel-${field.id}" class="field-ndvi-panel" style="display: none;"></div>
         `;
 
         item.querySelector('.js-focus-field').addEventListener('click', () => {
-          focusOnSavedField(field);
+          focusField(field.id);
+        });
+
+        item.querySelector('.js-route-field').addEventListener('click', () => {
+          routeToField(field.id);
+        });
+
+        item.querySelector('.js-scan-ndvi').addEventListener('click', () => {
+          scanFieldNdvi(field.id);
         });
 
         elements.registeredFieldsList.appendChild(item);
       }
 
-      // Render polygon on map if boundary can be parsed
-      renderSavedFieldPolygon(field);
+      // Render Google Maps Polygon
+      const poly = renderSavedFieldPolygon(field);
+      if (poly) {
+        savedFieldPolygons[field.id] = poly;
+        savedFieldsMap[field.id].poly = poly;
+
+        const path = poly.getPath();
+        path.forEach(pt => {
+          overallBounds.extend(pt);
+          validBoundsCount++;
+        });
+      }
     });
+
+    // If user has saved fields, smoothly center and fit them on initial load
+    if (validBoundsCount > 0 && map && !currentGpsPosition) {
+      map.fitBounds(overallBounds);
+    }
   }
 
   /**
-   * Parse EWKT / WKT or GeoJSON to Leaflet polygon
+   * Render existing PostGIS parcel boundary as Google Maps Polygon
    */
   function renderSavedFieldPolygon(field) {
-    if (!field.boundary) return;
+    if (!field.boundary || !map) return null;
 
-    let latLngs = parseBoundaryGeometry(field.boundary);
-    if (!latLngs || latLngs.length < 3) return;
+    const latLngs = parseBoundaryGeometry(field.boundary);
+    if (!latLngs || latLngs.length < 3) return null;
 
-    const poly = L.polygon(latLngs, {
-      color: '#0284c7', // Satellite cyan/blue for existing saved fields
-      weight: 2,
+    const googleCoords = latLngs.map(pt => ({ lat: pt[0], lng: pt[1] }));
+
+    const poly = new google.maps.Polygon({
+      map,
+      paths: googleCoords,
+      strokeColor: '#0284c7', // Cyan / Sky blue for verified parcels
+      strokeOpacity: 0.95,
+      strokeWeight: 2.5,
       fillColor: '#38bdf8',
-      fillOpacity: 0.2
+      fillOpacity: 0.22,
+      clickable: true
     });
 
-    poly.bindPopup(`
-      <div style="font-family: sans-serif; font-size: 0.85rem;">
-        <strong style="color: #0369a1; font-size: 0.95rem;">${escapeHTML(field.name)}</strong><br>
-        <strong>Acreage:</strong> ${field.acreage} ac<br>
-        <strong>Crop:</strong> ${escapeHTML(field.crop_variety)}<br>
-        ${field.planting_date ? `<strong>Planted:</strong> ${field.planting_date}<br>` : ''}
-        ${field.soil_texture_type ? `<strong>Soil:</strong> ${escapeHTML(field.soil_texture_type)}<br>` : ''}
-        <span style="font-size: 0.75rem; color: #64748b;">PostGIS Verified Parcel</span>
-      </div>
-    `);
+    const infoWindow = new google.maps.InfoWindow({
+      content: `
+        <div style="font-family: inherit; font-size: 0.85rem; min-width: 210px; line-height: 1.45;">
+          <strong style="color: #0369a1; font-size: 0.95rem;">${escapeHTML(field.name)}</strong><br>
+          <strong>Acreage:</strong> ${field.acreage} ac<br>
+          <strong>Crop:</strong> ${escapeHTML(field.crop_variety)}<br>
+          ${field.planting_date ? `<strong>Planted:</strong> ${field.planting_date}<br>` : ''}
+          ${field.soil_texture_type ? `<strong>Soil:</strong> ${escapeHTML(field.soil_texture_type)}<br>` : ''}
+          <div style="margin-top: 0.5rem; display: flex; gap: 0.4rem;">
+            <button type="button" class="btn btn-subtle btn-xs" id="infoRouteBtn_${field.id}" style="padding: 0.25rem 0.55rem; font-size: 0.75rem; font-weight: 600; cursor: pointer;">
+              🧭 Directions
+            </button>
+            <button type="button" class="btn btn-subtle btn-xs" id="infoEditBtn_${field.id}" style="padding: 0.25rem 0.55rem; font-size: 0.75rem; cursor: pointer;">
+              ✏️ Edit
+            </button>
+          </div>
+        </div>
+      `
+    });
 
-    field._leafletLayer = poly;
-    if (savedFieldsMap[field.id]) {
-      savedFieldsMap[field.id].poly = poly;
-    }
-    existingFieldsLayers.addLayer(poly);
+    poly.addListener('click', (e) => {
+      infoWindow.setPosition(e.latLng);
+      infoWindow.open(map);
+
+      setTimeout(() => {
+        const rBtn = document.getElementById(`infoRouteBtn_${field.id}`);
+        if (rBtn) {
+          rBtn.onclick = () => {
+            infoWindow.close();
+            routeToField(field.id);
+          };
+        }
+        const eBtn = document.getElementById(`infoEditBtn_${field.id}`);
+        if (eBtn) {
+          eBtn.onclick = () => {
+            infoWindow.close();
+            loadFieldForEditing(field);
+          };
+        }
+      }, 50);
+    });
+
+    return poly;
   }
 
-  function focusOnSavedField(field) {
-    if (field._leafletLayer) {
-      map.fitBounds(field._leafletLayer.getBounds(), { padding: [40, 40], maxZoom: 17 });
-      field._leafletLayer.openPopup();
-    }
-  }
-
+  /**
+   * Focus on saved field parcel
+   */
   function focusField(fieldId) {
     const entry = savedFieldsMap[fieldId];
-    if (entry && entry.poly) {
-      const el = document.getElementById('fields');
-      if (el) el.scrollIntoView({ behavior: 'smooth' });
-      map.fitBounds(entry.poly.getBounds(), { padding: [40, 40], maxZoom: 17 });
-      entry.poly.openPopup();
-      return true;
-    }
-    return false;
+    if (!entry || !entry.poly || !map) return false;
+
+    const el = document.getElementById('fields');
+    if (el) el.scrollIntoView({ behavior: 'smooth' });
+
+    const bounds = new google.maps.LatLngBounds();
+    entry.poly.getPath().forEach(pt => bounds.extend(pt));
+    map.fitBounds(bounds);
+
+    return true;
   }
 
   function loadFieldForEditing(field) {
@@ -1745,14 +1849,20 @@ const AgriTrustFieldManager = (() => {
 
     editingFieldId = field.id;
 
-    // Parse existing boundary
     const latLngs = parseBoundaryGeometry(field.boundary);
     if (!latLngs || latLngs.length < 3) return;
 
     resetDrawing();
     editingFieldId = field.id;
-    vertices = latLngs.map((pt) => ({ lat: pt[0], lng: pt[1] }));
-    rebuildVertexMarkers();
+    vertices = latLngs.map(pt => ({ lat: pt[0], lng: pt[1] }));
+
+    // Create vertex markers
+    vertices.forEach((pt, i) => {
+      const m = createVertexMarker(pt, i, i === 0);
+      m.setDraggable(true);
+      vertexMarkers.push(m);
+    });
+
     closePolygon();
 
     if (elements.fieldNameInput) elements.fieldNameInput.value = field.name || '';
@@ -1761,50 +1871,416 @@ const AgriTrustFieldManager = (() => {
     if (elements.soilTextureSelect) elements.soilTextureSelect.value = field.soil_texture_type || '';
     if (elements.fieldAcreageInput) elements.fieldAcreageInput.value = field.acreage || '';
 
-    if (polygonLayer) {
-      map.fitBounds(polygonLayer.getBounds(), { padding: [40, 40], maxZoom: 17 });
-    }
-    showValidationMessage(`Editing parcel "${field.name}". Drag boundary corners to adjust, then click "Save Parcel Boundary".`, 'info');
+    focusField(field.id);
+    showValidationMessage(`Editing parcel "${field.name}". Drag boundary corner handles on the Google map to adjust, then click "Save Parcel Boundary".`, 'info');
   }
 
   /**
-   * Parses EWKT ("SRID=4326;POLYGON((lng lat, ...))") or GeoJSON into Leaflet [[lat, lng], ...]
+   * Scan & compute real Copernicus Sentinel-2 L2A NDVI for a registered field parcel boundary.
+   * Dispatches authenticated request to /api/satellite/process-field and displays canopy metrics.
+   */
+  async function scanFieldNdvi(fieldId, explicitFieldName = null) {
+    if (!fieldId) return;
+
+    const entry = savedFieldsMap[fieldId];
+    const fieldName = explicitFieldName || (entry && entry.field ? entry.field.name : 'Selected Field');
+
+    // Target inline panel in field card
+    const panel = document.getElementById(`ndvi-panel-${fieldId}`);
+    const btn = document.querySelector(`.js-scan-ndvi[data-id="${fieldId}"]`);
+
+    // Target dedicated modal if present
+    const modal = document.getElementById('fieldNdviModal');
+    const modalBody = document.getElementById('fieldNdviModalBody');
+    const modalSubtitle = document.getElementById('ndviModalSubtitle');
+
+    if (btn) {
+      btn.disabled = true;
+      btn.innerHTML = `
+        <svg class="spin-animation" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+          <circle cx="12" cy="12" r="10" stroke-width="3" stroke-dasharray="32" stroke-linecap="round"></circle>
+        </svg>
+        Scanning Sentinel-2...
+      `;
+    }
+
+    const loadingHtml = `
+      <div class="ndvi-loading-box">
+        <div class="ndvi-loading-spinner"></div>
+        <div>
+          <strong>Acquiring Sentinel-2 L2A Multispectral Imagery</strong>
+          <p style="margin: 0.25rem 0 0; font-size: 0.75rem; color: var(--text-muted);">
+            Connecting to Copernicus Data Space, evaluating B04 (Red) & B08 (NIR) for "${escapeHTML(fieldName)}"...
+          </p>
+        </div>
+      </div>
+    `;
+
+    if (panel) {
+      panel.style.display = 'block';
+      panel.innerHTML = loadingHtml;
+    }
+
+    if (modal && modalBody) {
+      if (modalSubtitle) modalSubtitle.textContent = `Processing real Sentinel-2 multispectral reflectance for "${fieldName}"`;
+      modalBody.innerHTML = loadingHtml;
+      modal.classList.add('active');
+    }
+
+    try {
+      if (!window.AgriTrustSupabase || !window.AgriTrustSupabase.processFieldSatelliteNdvi) {
+        throw new Error('Supabase client satellite service not initialized.');
+      }
+
+      const result = await window.AgriTrustSupabase.processFieldSatelliteNdvi(fieldId);
+
+      if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = '🛰️ Re-scan Satellite NDVI';
+      }
+
+      if (!result.success) {
+        const errorHtml = `
+          <div class="ndvi-error-box">
+            <div class="ndvi-error-title">⚠️ Satellite Scan Failed</div>
+            <div class="ndvi-error-msg">${escapeHTML(result.message || 'Processing failed')}</div>
+            <button type="button" class="btn btn-subtle btn-xs" onclick="AgriTrustFieldManager.scanFieldNdvi('${fieldId}')" style="margin-top: 0.4rem;">
+              Retry Scan
+            </button>
+          </div>
+        `;
+        if (panel) panel.innerHTML = errorHtml;
+        if (modalBody) modalBody.innerHTML = errorHtml;
+        return;
+      }
+
+      // Success: determine canopy vigor classification from real mean_ndvi
+      const meanNdvi = typeof result.mean_ndvi === 'number' ? result.mean_ndvi : parseFloat(result.mean_ndvi || 0);
+      const minNdvi = typeof result.min_ndvi === 'number' ? result.min_ndvi : parseFloat(result.min_ndvi || 0);
+      const maxNdvi = typeof result.max_ndvi === 'number' ? result.max_ndvi : parseFloat(result.max_ndvi || 0);
+      const cloudPct = typeof result.cloud_coverage_pct === 'number' ? result.cloud_coverage_pct : parseFloat(result.cloud_coverage_pct || 0);
+
+      let vigorBadgeClass = 'vigor-moderate';
+      let vigorText = 'Moderate Vigor';
+      if (meanNdvi >= 0.6) {
+        vigorBadgeClass = 'vigor-high';
+        vigorText = 'Lush / High Vigor';
+      } else if (meanNdvi >= 0.3) {
+        vigorBadgeClass = 'vigor-moderate';
+        vigorText = 'Moderate Vigor';
+      } else if (meanNdvi >= 0.1) {
+        vigorBadgeClass = 'vigor-low';
+        vigorText = 'Sparse / Low Vigor';
+      } else {
+        vigorBadgeClass = 'vigor-bare';
+        vigorText = 'Bare Soil / Water';
+      }
+
+      // Check if generated NDVI raster is available for map overlay
+      const rasterUrl = result.raster_url || result.signed_raster_url || result.tile_url || null;
+      let overlayRendered = false;
+      if (rasterUrl) {
+        overlayRendered = displayNdviRasterOnMap(fieldId, rasterUrl);
+      }
+
+      const storageStatus = result.stored_in_storage
+        ? '<span class="status-pill status-success">✓ Saved in Supabase (satellite-rasters)</span>'
+        : '<span class="status-pill status-neutral">Computed Server-side</span>';
+
+      const dbStatus = result.stored_in_database
+        ? '<span class="status-pill status-success">✓ Synced to satellite_indices</span>'
+        : '';
+
+      const overlayStatus = overlayRendered
+        ? '<span class="status-pill status-success">✓ NDVI Overlay Active on Google Map</span>'
+        : (rasterUrl ? '<span class="status-pill status-success">✓ Raster Image Available</span>' : '');
+
+      let rasterPreviewHtml = '';
+      if (rasterUrl) {
+        rasterPreviewHtml = `
+          <div class="ndvi-raster-preview-box">
+            <img src="${escapeHTML(rasterUrl)}" alt="Sentinel-2 NDVI Raster" class="ndvi-raster-thumb" />
+            <div class="ndvi-raster-meta">
+              <strong>🛰️ Sentinel-2 L2A Surface Reflectance Raster</strong>
+              <div style="display: flex; gap: 0.4rem; margin-top: 0.25rem; flex-wrap: wrap;">
+                <button type="button" class="btn btn-secondary btn-xs" onclick="AgriTrustFieldManager.focusFieldAndShowRaster('${fieldId}')">
+                  🗺️ Pan to Map Overlay
+                </button>
+                <button type="button" class="btn btn-subtle btn-xs" onclick="AgriTrustFieldManager.clearNdviRasterOverlay('${fieldId}')">
+                  ✕ Hide Overlay
+                </button>
+              </div>
+            </div>
+          </div>
+        `;
+      }
+
+      const resultsHtml = `
+        <div class="ndvi-results-card">
+          <div class="ndvi-results-header">
+            <div>
+              <span class="ndvi-platform-tag">🛰️ ${escapeHTML(result.satellite_platform || 'Sentinel-2 L2A')}</span>
+              <span class="ndvi-date-tag">📅 Acquired: <strong>${escapeHTML(result.acquisition_date || 'Latest Pass')}</strong></span>
+            </div>
+            <span class="ndvi-vigor-badge ${vigorBadgeClass}">${vigorText}</span>
+          </div>
+
+          <div class="ndvi-metrics-grid">
+            <div class="ndvi-metric-item highlight">
+              <span class="ndvi-metric-label">Mean Field NDVI</span>
+              <span class="ndvi-metric-val">${meanNdvi.toFixed(4)}</span>
+            </div>
+            <div class="ndvi-metric-item">
+              <span class="ndvi-metric-label">NDVI Range (Min / Max)</span>
+              <span class="ndvi-metric-val">${minNdvi.toFixed(2)} — ${maxNdvi.toFixed(2)}</span>
+            </div>
+            <div class="ndvi-metric-item">
+              <span class="ndvi-metric-label">Cloud Coverage</span>
+              <span class="ndvi-metric-val">${cloudPct.toFixed(1)}%</span>
+            </div>
+            <div class="ndvi-metric-item">
+              <span class="ndvi-metric-label">Parcel Pixels Analyzed</span>
+              <span class="ndvi-metric-val">${result.valid_pixels || '--'} / ${result.total_pixels || '--'}</span>
+            </div>
+          </div>
+
+          ${rasterPreviewHtml}
+
+          <div class="ndvi-storage-meta">
+            ${storageStatus}
+            ${dbStatus}
+            ${overlayStatus}
+          </div>
+        </div>
+      `;
+
+      if (panel) panel.innerHTML = resultsHtml;
+      if (modalBody) modalBody.innerHTML = resultsHtml;
+
+    } catch (err) {
+      if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = '🛰️ Scan Satellite NDVI';
+      }
+      const connErrorHtml = `
+        <div class="ndvi-error-box">
+          <div class="ndvi-error-title">Connection Error</div>
+          <div class="ndvi-error-msg">${escapeHTML(err.message || 'Could not connect to satellite processing service.')}</div>
+        </div>
+      `;
+      if (panel) panel.innerHTML = connErrorHtml;
+      if (modalBody) modalBody.innerHTML = connErrorHtml;
+    }
+  }
+
   /**
-   * Parses EWKT, WKT, GeoJSON (object or string), or Hex-encoded PostGIS EWKB
-   * into Leaflet format [[lat, lng], ...]
+   * Display generated Sentinel-2 NDVI raster over the farmer's Google Maps field boundary
+   */
+  function displayNdviRasterOnMap(fieldId, rasterUrl) {
+    if (!rasterUrl || !map || !window.google?.maps?.GroundOverlay) {
+      return false;
+    }
+
+    // Clear existing overlay for this field if present
+    if (activeNdviOverlays[fieldId]) {
+      activeNdviOverlays[fieldId].setMap(null);
+      delete activeNdviOverlays[fieldId];
+    }
+
+    const entry = savedFieldsMap[fieldId];
+    let field = entry ? entry.field : null;
+    if (!field && window.AgriTrustFarmerDashboard && window.AgriTrustFarmerDashboard.getFieldById) {
+      field = window.AgriTrustFarmerDashboard.getFieldById(fieldId);
+    }
+
+    const bounds = new google.maps.LatLngBounds();
+    if (entry && entry.poly && entry.poly.getPath) {
+      entry.poly.getPath().forEach(pt => bounds.extend(pt));
+    } else if (field && field.boundary) {
+      const latLngs = parseBoundaryGeometry(field.boundary);
+      if (latLngs && latLngs.length >= 3) {
+        latLngs.forEach(pt => bounds.extend(new google.maps.LatLng(pt[0], pt[1])));
+      }
+    }
+
+    if (bounds.isEmpty()) {
+      console.warn('[AgriTrustFieldManager] Cannot display NDVI raster overlay: parcel boundary bounds are empty.');
+      return false;
+    }
+
+    const overlay = new google.maps.GroundOverlay(rasterUrl, bounds, {
+      opacity: 0.85,
+      clickable: true
+    });
+
+    overlay.addListener('click', () => {
+      focusField(fieldId);
+    });
+
+    overlay.setMap(map);
+    activeNdviOverlays[fieldId] = overlay;
+
+    return true;
+  }
+
+  /**
+   * Clear active NDVI raster overlay for a field
+   */
+  function clearNdviRasterOverlay(fieldId) {
+    if (activeNdviOverlays[fieldId]) {
+      activeNdviOverlays[fieldId].setMap(null);
+      delete activeNdviOverlays[fieldId];
+      return true;
+    }
+    return false;
+  }
+
+  /**
+   * Smoothly scroll to map, close modal, and focus field parcel with its NDVI overlay
+   */
+  function focusFieldAndShowRaster(fieldId) {
+    const ndviModal = document.getElementById('fieldNdviModal');
+    if (ndviModal) {
+      ndviModal.classList.remove('active');
+      document.body.style.overflow = '';
+    }
+
+    const el = document.getElementById('fields');
+    if (el) el.scrollIntoView({ behavior: 'smooth' });
+
+    focusField(fieldId);
+  }
+
+  /**
+   * Turn-by-Turn Road Navigation using Google Directions Service
+   */
+  async function routeToField(fieldId) {
+    const entry = savedFieldsMap[fieldId];
+    if (!entry || !entry.field) {
+      showValidationMessage('Field parcel not found for routing.', 'warning');
+      return;
+    }
+
+    const field = entry.field;
+    let destLatLng = null;
+
+    if (entry.poly) {
+      const bounds = new google.maps.LatLngBounds();
+      entry.poly.getPath().forEach(pt => bounds.extend(pt));
+      destLatLng = bounds.getCenter();
+    } else if (field.boundary) {
+      const coords = parseBoundaryGeometry(field.boundary);
+      if (coords && coords.length > 0) {
+        destLatLng = new google.maps.LatLng(coords[0][0], coords[0][1]);
+      }
+    }
+
+    if (!destLatLng) {
+      showValidationMessage('Could not determine field coordinates for route calculation.', 'warning');
+      return;
+    }
+
+    let originLatLng;
+    let originName;
+    if (currentGpsPosition && typeof currentGpsPosition.lat === 'number') {
+      originLatLng = new google.maps.LatLng(currentGpsPosition.lat, currentGpsPosition.lng);
+      originName = currentGpsPosition.address?.primaryPlace || 'Your Device GPS Position';
+    } else {
+      originLatLng = map.getCenter();
+      originName = 'Current Map Center';
+    }
+
+    if (elements.routePanel) elements.routePanel.style.display = 'block';
+    if (elements.routeOriginName) elements.routeOriginName.textContent = originName;
+    if (elements.routeDestName) elements.routeDestName.textContent = field.name;
+
+    showValidationMessage(`Calculating real road route to ${field.name} via Google Directions...`, 'info');
+
+    const travelMode = selectedRouteMode === 'walking'
+      ? google.maps.TravelMode.WALKING
+      : google.maps.TravelMode.DRIVING;
+
+    directionsService.route({
+      origin: originLatLng,
+      destination: destLatLng,
+      travelMode: travelMode
+    }, (result, status) => {
+      if (status === google.maps.DirectionsStatus.OK && result.routes && result.routes[0]) {
+        directionsRenderer.setDirections(result);
+
+        const leg = result.routes[0].legs[0];
+        const distText = leg.distance.text;
+        const durText = leg.duration.text;
+
+        if (elements.routeMetrics) elements.routeMetrics.style.display = 'grid';
+        if (elements.routeDirectDistance) elements.routeDirectDistance.textContent = `${(leg.distance.value / 1000).toFixed(1)} km`;
+        if (elements.routeRoadDistance) elements.routeRoadDistance.textContent = distText;
+        if (elements.routeTravelTime) elements.routeTravelTime.textContent = durText;
+        if (elements.routingNoticeText) {
+          elements.routingNoticeText.textContent = `Turn-by-turn road route computed via Google Maps (${leg.distance.text}, ${leg.duration.text}).`;
+        }
+        if (elements.clearRouteBtn) elements.clearRouteBtn.style.display = 'block';
+
+        showValidationMessage(`Google road navigation calculated: ${distText} (~${durText}).`, 'success');
+      } else {
+        console.warn('[AgriTrustFieldManager] Directions failed:', status);
+        showValidationMessage(`Could not calculate road route: ${status}. If across water or unpaved tracks, verify endpoints.`, 'warning');
+      }
+    });
+  }
+
+  function clearActiveRoute() {
+    if (directionsRenderer) {
+      directionsRenderer.set('directions', null);
+    }
+    if (elements.routeMetrics) elements.routeMetrics.style.display = 'none';
+    if (elements.clearRouteBtn) elements.clearRouteBtn.style.display = 'none';
+    if (elements.routeDestName) elements.routeDestName.textContent = 'Select a Field Parcel';
+    if (elements.routingNoticeText) {
+      elements.routingNoticeText.textContent = 'Click "🧭 Directions" on any registered field parcel to calculate Google road directions.';
+    }
+  }
+
+  function setRouteMode(mode) {
+    selectedRouteMode = mode;
+    if (elements.routeModeBtns) {
+      elements.routeModeBtns.forEach(btn => {
+        if (btn.dataset.mode === mode) btn.classList.add('active');
+        else btn.classList.remove('active');
+      });
+    }
+  }
+
+  /**
+   * Geometry Decoding Helpers (Hex EWKB, WKT, GeoJSON)
    */
   function parseBoundaryGeometry(boundary) {
     if (!boundary) return null;
 
     try {
-      // 1. Direct GeoJSON Object
       if (typeof boundary === 'object' && boundary.coordinates) {
         const ring = boundary.coordinates[0];
-        return ring.map((pt) => [pt[1], pt[0]]);
+        return ring.map(pt => [pt[1], pt[0]]);
       }
 
       if (typeof boundary === 'string') {
         const s = boundary.trim();
 
-        // 2. Serialized GeoJSON String
         if (s.startsWith('{') && s.endsWith('}')) {
           try {
             const parsed = JSON.parse(s);
             if (parsed && parsed.coordinates) {
               const ring = parsed.coordinates[0];
-              return ring.map((pt) => [pt[1], pt[0]]);
+              return ring.map(pt => [pt[1], pt[0]]);
             }
-          } catch (e) {
-            // Not valid JSON, continue to WKT/EWKB
-          }
+          } catch (e) {}
         }
 
-        // 3. WKT or EWKT String (e.g., SRID=4326;POLYGON((...)) or POLYGON((...)))
         const wktMatch = s.match(/POLYGON\s*\(\(\s*(.+?)\s*\)\)/i);
         if (wktMatch) {
-          const coordPairs = wktMatch[1].split(',');
+          const pairs = wktMatch[1].split(',');
           const latLngs = [];
-          coordPairs.forEach((pair) => {
+          pairs.forEach(pair => {
             const parts = pair.trim().split(/\s+/);
             if (parts.length >= 2) {
               const lng = parseFloat(parts[0]);
@@ -1817,7 +2293,6 @@ const AgriTrustFieldManager = (() => {
           if (latLngs.length >= 3) return latLngs;
         }
 
-        // 4. Hex-encoded PostGIS EWKB / WKB (Standard PostgREST geometry format)
         const cleanHex = s.replace(/^\\x/i, '');
         if (cleanHex.length >= 32 && /^[0-9a-fA-F]+$/.test(cleanHex)) {
           const latLngs = parseHexEWKB(cleanHex);
@@ -1830,9 +2305,6 @@ const AgriTrustFieldManager = (() => {
     return null;
   }
 
-  /**
-   * Pure JavaScript Binary Decoder for PostGIS Hex EWKB Polygons
-   */
   function parseHexEWKB(hexStr) {
     try {
       const byteLen = hexStr.length / 2;
@@ -1845,14 +2317,12 @@ const AgriTrustFieldManager = (() => {
       const isLittle = view.getUint8(0) === 1;
       const geomType = view.getUint32(1, isLittle);
       const hasSrid = (geomType & 0x20000000) !== 0;
-      const baseType = geomType & 0xFF; // 3 = Polygon, 6 = MultiPolygon
+      const baseType = geomType & 0xFF;
 
       let offset = 5;
-      if (hasSrid) {
-        offset += 4; // Skip 4-byte SRID
-      }
+      if (hasSrid) offset += 4;
 
-      if (baseType === 3) { // Polygon
+      if (baseType === 3) {
         const numRings = view.getUint32(offset, isLittle);
         offset += 4;
         if (numRings === 0) return null;
@@ -1863,44 +2333,235 @@ const AgriTrustFieldManager = (() => {
           const lng = view.getFloat64(offset, isLittle);
           const lat = view.getFloat64(offset + 8, isLittle);
           offset += 16;
-          if (!isNaN(lat) && !isNaN(lng)) {
-            latLngs.push([lat, lng]);
-          }
-        }
-        return latLngs;
-      } else if (baseType === 6) { // MultiPolygon (outer ring of first polygon)
-        const numPolys = view.getUint32(offset, isLittle);
-        offset += 4;
-        if (numPolys === 0) return null;
-        const polyEndian = view.getUint8(offset) === 1;
-        offset += 5;
-        const numRings = view.getUint32(offset, polyEndian);
-        offset += 4;
-        if (numRings === 0) return null;
-        const numPoints = view.getUint32(offset, polyEndian);
-        offset += 4;
-        const latLngs = [];
-        for (let i = 0; i < numPoints; i++) {
-          const lng = view.getFloat64(offset, polyEndian);
-          const lat = view.getFloat64(offset + 8, polyEndian);
-          offset += 16;
-          if (!isNaN(lat) && !isNaN(lng)) {
-            latLngs.push([lat, lng]);
-          }
+          if (!isNaN(lat) && !isNaN(lng)) latLngs.push([lat, lng]);
         }
         return latLngs;
       }
-    } catch (err) {
-      console.warn('[AgriTrustFieldManager] Hex EWKB decoding error:', err);
+    } catch (e) {
+      console.warn('[AgriTrustFieldManager] Hex EWKB parse error:', e);
     }
     return null;
   }
 
-  function escapeHTML(str) {
-    if (!str) return '';
-    return str.replace(/[&<>'"]/g, 
-      tag => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[tag] || tag)
-    );
+  /**
+   * Toggle Fullscreen Map Mode
+   */
+  function toggleFullscreen() {
+    if (!elements.mapWrapper) return;
+
+    if (!isFullscreen) {
+      if (elements.mapWrapper.requestFullscreen) {
+        elements.mapWrapper.requestFullscreen().catch(() => {});
+      }
+      elements.mapWrapper.classList.add('map-fullscreen-active');
+      isFullscreen = true;
+      if (elements.fullscreenBtn) {
+        elements.fullscreenBtn.innerHTML = `
+          <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+          Exit Fullscreen
+        `;
+      }
+    } else {
+      if (document.exitFullscreen && document.fullscreenElement) {
+        document.exitFullscreen().catch(() => {});
+      }
+      elements.mapWrapper.classList.remove('map-fullscreen-active');
+      isFullscreen = false;
+      if (elements.fullscreenBtn) {
+        elements.fullscreenBtn.innerHTML = `
+          <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5v-4m0 4h-4m4 0l-5-5"/></svg>
+          Fullscreen
+        `;
+      }
+    }
+
+    setTimeout(() => {
+      if (map && window.google?.maps?.event) {
+        google.maps.event.trigger(map, 'resize');
+      }
+    }, 200);
+  }
+
+  /**
+   * Multilingual Language Switching
+   */
+  function setLanguage(lang) {
+    if (!lang) return;
+    currentLanguage = lang;
+    if (elements.langButtons) {
+      elements.langButtons.forEach(b => {
+        if (b.dataset.lang === lang) b.classList.add('active');
+        else b.classList.remove('active');
+      });
+    }
+
+    if (currentGpsPosition && typeof currentGpsPosition.lat === 'number') {
+      resolveGoogleReverseGeocode(currentGpsPosition.lat, currentGpsPosition.lng).then(details => {
+        currentGpsPosition.address = details;
+        updateLocationDisplay(currentGpsPosition.lat, currentGpsPosition.lng, currentGpsPosition.accuracy, details, currentGpsPosition.coords);
+      });
+    }
+  }
+
+  /**
+   * Auth state check and load fields
+   */
+  async function checkAuthState() {
+    if (window.AgriTrustSupabase && window.AgriTrustSupabase.ready) {
+      await window.AgriTrustSupabase.ready();
+    }
+
+    if (!window.AgriTrustSupabase || !window.AgriTrustSupabase.isReady()) {
+      showAuthGateNotice('Supabase is not configured yet. Configure local .env to enable remote parcel persistence.', 'warning');
+      if (elements.registeredFieldsList) {
+        elements.registeredFieldsList.innerHTML = `
+          <div class="unauth-map-notice">
+            <div style="font-weight: 600; color: #0f172a; margin-bottom: 0.25rem;">🔒 Private Farm Data Protection</div>
+            Sign in to your farm account to view and manage your private registered field parcels. Your parcel boundaries, GPS coordinates, and soil data remain strictly private and protected by Supabase Row Level Security.
+          </div>
+        `;
+      }
+      return;
+    }
+
+    const user = await window.AgriTrustSupabase.getUser();
+    if (user) {
+      showAuthGateNotice(`Authenticated as ${user.email}. Saved field parcels will be associated with your farm ID.`, 'success');
+      loadRegisteredFields();
+    } else {
+      showAuthGateNotice('Drawing in preview mode. Sign In or Register to save your field boundaries into the cloud database.', 'info');
+      if (elements.registeredFieldsList) {
+        elements.registeredFieldsList.innerHTML = `
+          <div class="unauth-map-notice">
+            <div style="font-weight: 600; color: #0f172a; margin-bottom: 0.25rem;">🔒 Private Farm Data Protection</div>
+            Sign in to your farm account to view and manage your private registered field parcels. Your parcel boundaries, GPS coordinates, and soil data remain strictly private and protected by Supabase Row Level Security.
+          </div>
+        `;
+      }
+    }
+  }
+
+  function showAuthGateNotice(message, type = 'info') {
+    if (!elements.authGateNotice) return;
+    elements.authGateNotice.style.display = 'block';
+    if (type === 'success') {
+      elements.authGateNotice.style.backgroundColor = '#dcfce7';
+      elements.authGateNotice.style.borderColor = '#86efac';
+      elements.authGateNotice.style.color = '#166534';
+    } else if (type === 'warning') {
+      elements.authGateNotice.style.backgroundColor = '#fef3c7';
+      elements.authGateNotice.style.borderColor = '#fcd34d';
+      elements.authGateNotice.style.color = '#92400e';
+    } else {
+      elements.authGateNotice.style.backgroundColor = '#f1f5f9';
+      elements.authGateNotice.style.borderColor = '#cbd5e1';
+      elements.authGateNotice.style.color = '#334155';
+    }
+    elements.authGateNotice.textContent = message;
+  }
+
+  /**
+   * Bind event listeners
+   */
+  function bindUIEvents() {
+    if (elements.startDrawBtn) elements.startDrawBtn.addEventListener('click', toggleDrawingState);
+    if (elements.captureGpsCornerBtn) elements.captureGpsCornerBtn.addEventListener('click', captureGpsCorner);
+    if (elements.undoPointBtn) elements.undoPointBtn.addEventListener('click', undoLastPoint);
+    if (elements.clearPolyBtn) elements.clearPolyBtn.addEventListener('click', resetDrawing);
+    if (elements.locateGpsBtn) elements.locateGpsBtn.addEventListener('click', handleExplicitGeolocation);
+    if (elements.toggleTrackingBtn) elements.toggleTrackingBtn.addEventListener('click', toggleTracking);
+    if (elements.basemapToggleBtn) elements.basemapToggleBtn.addEventListener('click', toggleBasemap);
+
+    if (elements.toggleRoutingBtn) {
+      elements.toggleRoutingBtn.addEventListener('click', () => {
+        if (!elements.routePanel) return;
+        const isHidden = elements.routePanel.style.display === 'none' || !elements.routePanel.style.display;
+        elements.routePanel.style.display = isHidden ? 'block' : 'none';
+      });
+    }
+
+    if (elements.closeRoutePanelBtn) {
+      elements.closeRoutePanelBtn.addEventListener('click', () => {
+        if (elements.routePanel) elements.routePanel.style.display = 'none';
+      });
+    }
+
+    if (elements.routeModeBtns) {
+      elements.routeModeBtns.forEach(btn => {
+        btn.addEventListener('click', () => setRouteMode(btn.dataset.mode));
+      });
+    }
+
+    if (elements.clearRouteBtn) elements.clearRouteBtn.addEventListener('click', clearActiveRoute);
+    if (elements.fullscreenBtn) elements.fullscreenBtn.addEventListener('click', toggleFullscreen);
+
+    if (elements.closeLocationCardBtn) {
+      elements.closeLocationCardBtn.addEventListener('click', () => {
+        if (elements.locationCard) elements.locationCard.style.display = 'none';
+      });
+    }
+
+    if (elements.btnImproveAccuracy) elements.btnImproveAccuracy.addEventListener('click', improveLocationAccuracy);
+    if (elements.saveFieldForm) elements.saveFieldForm.addEventListener('submit', handleFieldFormSubmit);
+
+    // Satellite NDVI Modal close handlers
+    const ndviModal = document.getElementById('fieldNdviModal');
+    const closeNdviBtn = document.getElementById('closeFieldNdviModal');
+    const closeNdviBtnBottom = document.getElementById('btnCloseNdviModalBottom');
+    const closeNdvi = () => {
+      if (ndviModal) {
+        ndviModal.classList.remove('active');
+        document.body.style.overflow = '';
+      }
+    };
+    if (closeNdviBtn) closeNdviBtn.addEventListener('click', closeNdvi);
+    if (closeNdviBtnBottom) closeNdviBtnBottom.addEventListener('click', closeNdvi);
+    if (ndviModal) {
+      ndviModal.addEventListener('click', (e) => {
+        if (e.target === ndviModal) closeNdvi();
+      });
+    }
+
+    document.addEventListener('fullscreenchange', () => {
+      if (!document.fullscreenElement && elements.mapWrapper) {
+        elements.mapWrapper.classList.remove('map-fullscreen-active');
+        isFullscreen = false;
+        if (elements.fullscreenBtn) {
+          elements.fullscreenBtn.innerHTML = `
+            <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5v-4m0 4h-4m4 0l-5-5"/></svg>
+            Fullscreen
+          `;
+        }
+        if (map && window.google?.maps?.event) {
+          google.maps.event.trigger(map, 'resize');
+        }
+      }
+    });
+  }
+
+  /**
+   * Main Initialization
+   */
+  async function init() {
+    cacheDOMElements();
+    if (!elements.mapContainer) {
+      console.warn('[AgriTrustFieldManager] Map container #fieldMap not found in DOM.');
+      return;
+    }
+
+    bindUIEvents();
+    checkAuthState();
+    await initMap();
+
+    if (window.AgriTrustSupabase && window.AgriTrustSupabase.onAuthStateChange) {
+      window.AgriTrustSupabase.onAuthStateChange(() => {
+        checkAuthState();
+      });
+    }
+
+    window.addEventListener('agritrust:supabaseReady', () => {
+      checkAuthState();
+    });
   }
 
   return {
@@ -1913,23 +2574,40 @@ const AgriTrustFieldManager = (() => {
     startDrawing,
     resetDrawing,
     refreshFields: loadRegisteredFields,
-    resolveGeographicLocation,
+    resolveGeographicLocation: resolveGoogleReverseGeocode,
     getCurrentGpsPosition: () => currentGpsPosition,
     toggleFullscreen,
-    searchLocation: handleUniversalSearch,
+    searchLocation: handleDirectCoordinateSearch,
     locateGps: handleExplicitGeolocation,
     improveLocationAccuracy,
+    toggleTracking,
+    startTracking,
     stopTracking,
-    registerExternalGnss,
-    setExternalGnssPosition,
+    captureGpsCorner,
+    registerExternalGnss: (p) => { externalGnssProvider = p; },
+    setExternalGnssPosition: (d) => { if (d) applyGpsReading(d.latitude, d.longitude, d.accuracy || 1, Date.now(), d, true); },
     classifyAccuracyTier,
     classifyLocationSource,
     isMobileDevice,
-    applyGpsReading
+    applyGpsReading,
+    routeToField,
+    clearActiveRoute,
+    setRouteMode,
+    getRouteMode: () => selectedRouteMode,
+    setLanguage,
+    getCurrentLanguage: () => currentLanguage,
+    setBasemap: (type) => { if (map && type) map.setMapTypeId(type); },
+    getMap: () => map,
+    isGoogleMapsLoaded: () => googleMapsLoaded,
+    scanFieldNdvi,
+    displayNdviRasterOnMap,
+    clearNdviRasterOverlay,
+    focusFieldAndShowRaster,
+    checkAuthState
   };
 })();
 
-// Explicitly bind AgriTrustFieldManager to global window and globalThis scopes
+// Bind to window and globalThis
 if (typeof window !== 'undefined') {
   window.AgriTrustFieldManager = AgriTrustFieldManager;
 }
@@ -1937,7 +2615,7 @@ if (typeof globalThis !== 'undefined') {
   globalThis.AgriTrustFieldManager = AgriTrustFieldManager;
 }
 
-// Auto-initialize on DOM ready or immediately if DOM is already loaded
+// Auto-initialize on DOM ready
 if (typeof document !== 'undefined') {
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', () => {
@@ -1947,4 +2625,3 @@ if (typeof document !== 'undefined') {
     AgriTrustFieldManager.init();
   }
 }
-

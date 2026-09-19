@@ -10,8 +10,6 @@
   <!-- Design System Stylesheet -->
   <link rel="stylesheet" href="css/styles.css">
 
-  <!-- Leaflet GIS Mapping Stylesheet -->
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 </head>
 <body>
 
@@ -592,6 +590,10 @@
                 <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
                 Start Drawing Parcel
               </button>
+              <button type="button" id="btnCaptureGpsCorner" class="btn btn-secondary" title="Capture current high-accuracy device GPS position as a boundary point" disabled>
+                <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/><path stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+                Capture GPS Corner
+              </button>
               <button type="button" id="btnUndoPoint" class="btn btn-secondary" title="Remove the most recently added point">
                 <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M3 10h10a5 5 0 015 5v2M3 10l6 6m-6-6l6-6"/></svg>
                 Undo Point
@@ -668,14 +670,55 @@
                 <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3" stroke-width="2"/><circle cx="12" cy="12" r="8" stroke-width="2"/></svg>
                 Locate My Field (GPS)
               </button>
-              <button type="button" id="btnToggleBasemap" class="map-floating-btn" title="Toggle between Satellite Imagery and Street/Road view">
+              <button type="button" id="btnToggleTracking" class="map-floating-btn" title="Toggle continuous GPS tracking mode">
+                <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+                <span id="trackingBtnLabel">Start Tracking</span>
+              </button>
+              <button type="button" id="btnToggleBasemap" class="map-floating-btn" title="Toggle between Google Satellite and Google Roadmap view">
                 <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"/></svg>
                 Switch to Street
+              </button>
+              <button type="button" id="btnToggleRouting" class="map-floating-btn" title="Toggle Route & Farm Navigation Panel">
+                <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"/></svg>
+                Routes
               </button>
               <button type="button" id="btnToggleFullscreen" class="map-floating-btn" title="Toggle full-screen map mode for precision boundary drawing">
                 <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5v-4m0 4h-4m4 0l-5-5"/></svg>
                 Fullscreen
               </button>
+            </div>
+
+            <!-- Field Navigation & Route Drawer -->
+            <div id="fieldRoutePanel" class="field-route-panel" style="display: none;">
+              <div class="route-panel-header">
+                <div class="route-panel-title">
+                  <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"/></svg>
+                  <strong>Field Route & Navigation</strong>
+                </div>
+                <button type="button" id="btnCloseRoutePanel" class="location-close-btn" title="Close route panel">&times;</button>
+              </div>
+              <div class="route-panel-body">
+                <div class="route-mode-selector">
+                  <button type="button" class="route-mode-btn active" data-mode="driving">🚗 Vehicle</button>
+                  <button type="button" class="route-mode-btn" data-mode="tractor">🚜 Tractor</button>
+                  <button type="button" class="route-mode-btn" data-mode="walking">🚶 Walking</button>
+                </div>
+                <div class="route-endpoints">
+                  <div class="route-endpoint-row"><span class="route-dot origin-dot"></span><span id="routeOriginName">Current GPS Location</span></div>
+                  <div class="route-endpoint-row"><span class="route-dot dest-dot"></span><span id="routeDestName">Select a Field Parcel</span></div>
+                </div>
+                <div id="routeMetrics" class="route-metrics-grid" style="display: none;">
+                  <div class="metric-box"><span class="metric-label">Direct Line</span><span id="routeDirectDistance" class="metric-val">--</span></div>
+                  <div class="metric-box"><span class="metric-label">Road Dist</span><span id="routeRoadDistance" class="metric-val">--</span></div>
+                  <div class="metric-box"><span class="metric-label">Est. Time</span><span id="routeTravelTime" class="metric-val">--</span></div>
+                </div>
+                <div id="routingNotice" class="routing-provider-notice">
+                  <span id="routingNoticeText">Click "🧭 Directions" on any registered field parcel or map point to calculate farm access route.</span>
+                </div>
+                <div class="route-actions">
+                  <button type="button" id="btnClearRoute" class="btn btn-secondary btn-sm" style="display: none; width: 100%;">Clear Active Route</button>
+                </div>
+              </div>
             </div>
 
             <!-- Detailed Current Location Information Card -->
@@ -751,9 +794,19 @@
               <div class="coord-search-icon">
                 <svg width="16" height="16" fill="none" stroke="#94a3b8" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
               </div>
-              <input type="text" id="manualCoordInput" class="coord-jump-input" placeholder="Search village, mandal, district or enter Lat, Lng (e.g. Guntur or 16.3067, 80.4365)">
+              <div class="coord-input-container">
+                <input type="text" id="manualCoordInput" class="coord-jump-input" placeholder="Search village, city, district, country, or Lat, Lng..." autocomplete="off">
+                <button type="button" id="btnClearSearch" class="search-clear-btn" style="display: none;" title="Clear search">&times;</button>
+                <div id="searchResultsDropdown" class="search-results-dropdown" style="display: none;"></div>
+              </div>
+              <!-- Multilingual Selector -->
+              <div class="map-lang-toggle" title="Location search language">
+                <button type="button" class="map-lang-btn active" data-lang="en">EN</button>
+                <button type="button" class="map-lang-btn" data-lang="te">తెలుగు</button>
+                <button type="button" class="map-lang-btn" data-lang="hi">हिंदी</button>
+              </div>
               <button type="button" id="btnManualJump" class="coord-jump-btn" title="Search place or jump to coordinates">
-                <span id="coordJumpBtnText">Search / Go</span>
+                <span id="coordJumpBtnText">Search</span>
               </button>
             </div>
           </div>
@@ -1909,6 +1962,29 @@
   </div>
 
   <!-- =========================================================================
+       11b. Satellite Sentinel-2 NDVI Diagnostics Modal
+       ========================================================================= -->
+  <div id="fieldNdviModal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="ndviModalTitle">
+    <div class="modal-card" style="max-width: 540px;">
+      <button id="closeFieldNdviModal" class="modal-close-btn" aria-label="Close dialog">&times;</button>
+      <div class="modal-header">
+        <h3 id="ndviModalTitle" class="modal-title">🛰️ Sentinel-2 L2A Canopy Vigor Analysis</h3>
+        <p id="ndviModalSubtitle" class="modal-subtitle">Real multispectral surface reflectance from Copernicus Data Space.</p>
+      </div>
+
+      <div id="fieldNdviModalBody" class="modal-body" style="padding: 0.5rem 0;">
+        <!-- Injected dynamically by scanFieldNdvi() -->
+      </div>
+
+      <div style="display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 1rem;">
+        <button type="button" id="btnCloseNdviModalBottom" class="btn btn-secondary">
+          Close
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- =========================================================================
        12. Delete Confirmation Modal
        ========================================================================= -->
   <div id="deleteFieldModal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="deleteModalTitle">
@@ -1987,8 +2063,6 @@
     if (!window.supabase) {
       document.write('<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"><\/script>');
     }
-  </script>
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="js/supabaseClient.js"></script>
   <script src="js/fieldManager.js"></script>
   <script src="js/farmerDashboard.js"></script>

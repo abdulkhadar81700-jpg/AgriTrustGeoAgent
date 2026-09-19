@@ -75,10 +75,28 @@ const AgriTrustSupabase = (() => {
   }
 
   /**
+   * Resolves the authentication redirect URL dynamically based on the current origin.
+   * Dynamically uses the current production origin (e.g., https://agritrustgeoagent.onrender.com)
+   * while keeping localhost / 127.0.0.1 working seamlessly for local development.
+   */
+  function getAuthRedirectUrl() {
+    try {
+      if (typeof window !== 'undefined' && window.location && window.location.origin) {
+        const origin = window.location.origin;
+        if (origin && origin !== 'null' && origin !== 'file://') {
+          return origin.replace(/\/+$/, '');
+        }
+      }
+    } catch (_) {}
+    return 'https://agritrustgeoagent.onrender.com';
+  }
+
+  /**
    * Direct REST Signup Fallback
    */
   async function restSignUp(email, password, role, metadata) {
-    const url = `${clientConfig.supabaseUrl.replace(/\/$/, '')}/auth/v1/signup`;
+    const redirectUrl = getAuthRedirectUrl();
+    const url = `${clientConfig.supabaseUrl.replace(/\/$/, '')}/auth/v1/signup?redirect_to=${encodeURIComponent(redirectUrl)}`;
     const key = clientConfig.supabasePublishableKey || clientConfig.supabaseAnonKey;
     try {
       const res = await fetch(url, {
@@ -196,10 +214,12 @@ const AgriTrustSupabase = (() => {
 
     if (supabaseInstance && supabaseInstance.auth && typeof supabaseInstance.auth.signUp === 'function') {
       try {
+        const redirectUrl = getAuthRedirectUrl();
         const { data, error } = await supabaseInstance.auth.signUp({
           email,
           password,
           options: {
+            emailRedirectTo: redirectUrl,
             data: {
               role: role,
               ...metadata
@@ -278,10 +298,11 @@ const AgriTrustSupabase = (() => {
 
     try {
       if (supabaseInstance.auth && typeof supabaseInstance.auth.signInWithOAuth === 'function') {
+        const redirectUrl = getAuthRedirectUrl();
         const { data, error } = await supabaseInstance.auth.signInWithOAuth({
           provider: 'google',
           options: {
-            redirectTo: window.location.origin,
+            redirectTo: redirectUrl,
             skipBrowserRedirect: true,
             queryParams: {
               access_type: 'offline',
@@ -502,10 +523,11 @@ const AgriTrustSupabase = (() => {
     }
     try {
       if (typeof supabaseInstance.auth.linkIdentity === 'function') {
+        const redirectUrl = getAuthRedirectUrl();
         const { data, error } = await supabaseInstance.auth.linkIdentity({
           provider: 'google',
           options: {
-            redirectTo: window.location.origin,
+            redirectTo: redirectUrl,
             skipBrowserRedirect: true
           }
         });
@@ -950,6 +972,72 @@ const AgriTrustSupabase = (() => {
   }
 
   /**
+   * Request Sentinel-2 L2A NDVI satellite processing for a farmer's registered PostGIS field boundary.
+   * Invokes the secure backend endpoint /api/satellite/process-field with caller's Bearer token.
+   * Never exposes CDSE credentials or server secrets.
+   */
+  async function processFieldSatelliteNdvi(fieldId, timeFrom = null, timeTo = null) {
+    if (!fieldId) {
+      return { success: false, message: 'Missing fieldId' };
+    }
+
+    try {
+      const session = await getSession();
+      if (!session || !session.access_token) {
+        return { success: false, message: 'You must be authenticated to request satellite NDVI processing.' };
+      }
+
+      const payload = { field_id: fieldId };
+      if (timeFrom) payload.time_from = timeFrom;
+      if (timeTo) payload.time_to = timeTo;
+
+      const res = await fetch('/api/satellite/process-field', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(payload)
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        return {
+          success: false,
+          status: 'ERROR',
+          message: data.error || data.details || `Server responded with status ${res.status}`
+        };
+      }
+
+      // If tile_storage_path is returned and raster_url is not yet set, generate a signed URL
+      if (data && data.tile_storage_path && !data.raster_url && supabaseInstance && supabaseInstance.storage) {
+        try {
+          const { data: signedData, error: signedErr } = await supabaseInstance
+            .storage
+            .from('satellite-rasters')
+            .createSignedUrl(data.tile_storage_path, 3600);
+          if (!signedErr && signedData && signedData.signedUrl) {
+            data.raster_url = signedData.signedUrl;
+          }
+        } catch (e) {
+          console.warn('[AgriTrustSupabase] Could not create signed URL for satellite raster:', e);
+        }
+      }
+
+      return {
+        success: true,
+        ...data
+      };
+    } catch (err) {
+      return {
+        success: false,
+        status: 'NETWORK_ERROR',
+        message: err.message || 'Could not connect to satellite processing service.'
+      };
+    }
+  }
+
+  /**
    * Register auth state change callback.
    */
   function onAuthStateChange(callback) {
@@ -968,6 +1056,7 @@ const AgriTrustSupabase = (() => {
     checkProfileStatus,
     completeFarmerSetup,
     linkGoogleIdentity,
+    getAuthRedirectUrl,
     mapAuthErrorToFarmerMessage,
     signOut,
     getSession,
@@ -982,6 +1071,7 @@ const AgriTrustSupabase = (() => {
     createCropEvidenceRecord,
     fetchFieldEvidence,
     analyzeCropEvidence,
+    processFieldSatelliteNdvi,
     onAuthStateChange,
     ready: () => {
       if (isConfigured) return Promise.resolve(true);
