@@ -15,6 +15,8 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
+from backend.copernicus_service import copernicus_service
+
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 FRONTEND_DIR = os.path.join(BASE_DIR, 'frontend')
 ENV_FILE = os.path.join(BASE_DIR, '.env')
@@ -54,7 +56,7 @@ class AgriTrustHTTPHandler(http.server.SimpleHTTPRequestHandler):
     def do_OPTIONS(self):
         """Handles browser CORS preflight requests for API endpoints."""
         clean_path = self.path.split('?')[0].rstrip('/')
-        if clean_path in ('/api/config', '/api/analyze-evidence'):
+        if clean_path in ('/api/config', '/api/analyze-evidence', '/api/copernicus/health', '/api/satellite/health'):
             self.send_response(204)
             self.send_cors_headers()
             self.send_header('Content-Length', '0')
@@ -64,8 +66,9 @@ class AgriTrustHTTPHandler(http.server.SimpleHTTPRequestHandler):
             self.end_headers()
 
     def do_GET(self):
-        # Dedicated endpoint to expose ONLY safe, public frontend configurations
         clean_path = self.path.split('?')[0].rstrip('/')
+
+        # Dedicated endpoint to expose ONLY safe, public frontend configurations
         if clean_path == '/api/config':
             load_env(ENV_FILE)
             raw_url = os.environ.get('SUPABASE_URL', '').strip()
@@ -92,22 +95,25 @@ class AgriTrustHTTPHandler(http.server.SimpleHTTPRequestHandler):
                 'your-anon-public-key' not in supabase_pub_key
             )
 
-            # Security: SUPABASE_SERVICE_ROLE_KEY and secrets are STRICTLY excluded
+            # Security: SUPABASE_SERVICE_ROLE_KEY and CDSE secrets are STRICTLY excluded
             payload = {
                 "configured": is_configured,
                 "supabaseUrl": supabase_url if is_configured else "",
                 "supabasePublishableKey": supabase_pub_key if is_configured else "",
                 "supabaseAnonKey": supabase_pub_key if is_configured else "",
+                "copernicusConfigured": copernicus_service.is_configured(),
                 "environment": os.environ.get('ENVIRONMENT', 'development')
             }
 
-            body = json.dumps(payload).encode('utf-8')
-            self.send_response(200)
-            self.send_header('Content-Type', 'application/json')
-            self.send_header('Content-Length', str(len(body)))
-            self.send_cors_headers()
-            self.end_headers()
-            self.wfile.write(body)
+            self.send_json(200, payload)
+            return
+
+        # Dedicated health/test endpoint for Copernicus Data Space Sentinel Hub verification
+        if clean_path in ('/api/copernicus/health', '/api/satellite/health'):
+            load_env(ENV_FILE)
+            health = copernicus_service.get_health_status()
+            status_code = 200 if health.get("status") in ("HEALTHY", "UNCONFIGURED") else 502
+            self.send_json(status_code, health)
             return
 
         super().do_GET()
