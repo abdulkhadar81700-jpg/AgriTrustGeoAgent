@@ -56,7 +56,7 @@ class AgriTrustHTTPHandler(http.server.SimpleHTTPRequestHandler):
     def do_OPTIONS(self):
         """Handles browser CORS preflight requests for API endpoints."""
         clean_path = self.path.split('?')[0].rstrip('/')
-        if clean_path in ('/api/config', '/api/analyze-evidence', '/api/copernicus/health', '/api/satellite/health'):
+        if clean_path in ('/api/config', '/api/analyze-evidence', '/api/copernicus/health', '/api/satellite/health', '/api/copernicus/smoke-test', '/api/satellite/smoke-test'):
             self.send_response(204)
             self.send_cors_headers()
             self.send_header('Content-Length', '0')
@@ -114,6 +114,14 @@ class AgriTrustHTTPHandler(http.server.SimpleHTTPRequestHandler):
             health = copernicus_service.get_health_status()
             status_code = 200 if health.get("status") in ("HEALTHY", "UNCONFIGURED") else 502
             self.send_json(status_code, health)
+            return
+
+        # Dedicated live Processing API smoke test for Sentinel-2 L2A NDVI
+        if clean_path in ('/api/copernicus/smoke-test', '/api/satellite/smoke-test'):
+            load_env(ENV_FILE)
+            result = copernicus_service.process_sentinel2_ndvi()
+            status_code = 200 if result.get("success") else (502 if result.get("status_code") != 400 else 400)
+            self.send_json(status_code, result)
             return
 
         super().do_GET()

@@ -229,6 +229,116 @@ class CopernicusService:
             "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(now))
         }
 
+    def process_sentinel2_ndvi(self, bbox: list = None, time_from: str = "2026-08-01T00:00:00Z", time_to: str = "2026-09-19T00:00:00Z") -> Dict[str, Any]:
+        """
+        Executes a real Sentinel Hub Processing API request for Sentinel-2 L2A NDVI.
+        Uses an Evalscript evaluating B04 (Red) and B08 (NIR).
+        Does NOT use fake or mock data.
+        """
+        token, err = self.get_access_token()
+        if not token or err:
+            return {
+                "success": False,
+                "status_code": 401 if self.is_configured() else 400,
+                "error": err or "Failed to obtain valid CDSE access token",
+                "processing_result": None
+            }
+
+        # Default bounding box: agricultural area in WGS84 [minLng, minLat, maxLng, maxLat]
+        if not bbox:
+            bbox = [80.4000, 16.3000, 80.4500, 16.3500]
+
+        evalscript = """//VERSION=3
+function setup() {
+  return {
+    input: ["B04", "B08", "dataMask"],
+    output: { bands: 4 }
+  };
+}
+
+function evaluatePixel(sample) {
+  let ndvi = (sample.B08 - sample.B04) / (sample.B08 + sample.B04);
+  if (sample.dataMask == 0) return [0, 0, 0, 0];
+  if (ndvi < 0.2) return [0.7, 0.2, 0.1, 1];
+  if (ndvi < 0.4) return [0.9, 0.8, 0.2, 1];
+  return [0.1, 0.8, 0.2, 1];
+}"""
+
+        payload = {
+            "input": {
+                "bounds": {
+                    "bbox": bbox
+                },
+                "data": [
+                    {
+                        "type": "sentinel-2-l2a",
+                        "dataFilter": {
+                            "timeRange": {
+                                "from": time_from,
+                                "to": time_to
+                            },
+                            "maxCloudCoverage": 50
+                        }
+                    }
+                ]
+            },
+            "output": {
+                "width": 256,
+                "height": 256,
+                "responses": [
+                    {
+                        "identifier": "default",
+                        "format": {
+                            "type": "image/png"
+                        }
+                    }
+                ]
+            },
+            "evalscript": evalscript
+        }
+
+        req = urllib.request.Request(
+            f"{SENTINEL_HUB_BASE_URL}/api/v1/process",
+            data=json.dumps(payload).encode("utf-8"),
+            headers={
+                "Authorization": f"Bearer {token}",
+                "Content-Type": "application/json",
+                "Accept": "image/png",
+                "User-Agent": "AgriTrustGeoAgent-Backend/2.0"
+            }
+        )
+
+        try:
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                data = resp.read()
+                return {
+                    "success": True,
+                    "status_code": resp.status,
+                    "content_type": resp.headers.get("Content-Type", "image/png"),
+                    "bytes_received": len(data),
+                    "is_png_valid": data.startswith(b'\x89PNG'),
+                    "collection": "sentinel-2-l2a",
+                    "evalscript_bands": ["B04", "B08", "dataMask"],
+                    "output_dimensions": "256x256",
+                    "bbox": bbox,
+                    "time_range": f"{time_from} to {time_to}",
+                    "message": "Sentinel-2 L2A NDVI processing completed successfully via Sentinel Hub Processing API."
+                }
+        except urllib.error.HTTPError as e:
+            err_body = e.read().decode("utf-8", errors="ignore")
+            return {
+                "success": False,
+                "status_code": e.code,
+                "error": f"Sentinel Hub Processing API error (HTTP {e.code})",
+                "details": err_body[:300]
+            }
+        except Exception as e:
+            return {
+                "success": False,
+                "status_code": 500,
+                "error": f"Connection error to Sentinel Hub Processing API: {type(e).__name__}"
+            }
+
 
 # Singleton service instance
 copernicus_service = CopernicusService()
